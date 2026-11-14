@@ -62,6 +62,23 @@ impl Default for Peer {
 
 pub(crate) type LockPeer = Arc<RwLock<Peer>>;
 
+pub(crate) fn resolve_db_url() -> String {
+    get_arg_opt("DB_URL").unwrap_or_else(|| {
+        let mut db = "db_v2.sqlite3".to_owned();
+        #[cfg(all(windows, not(debug_assertions)))]
+        {
+            if let Some(path) = hbb_common::config::Config::icon_path().parent() {
+                db = format!("{}\\{}", path.to_str().unwrap_or("."), db);
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            db = format!("./{db}");
+        }
+        db
+    })
+}
+
 #[derive(Clone)]
 pub(crate) struct PeerMap {
     map: Arc<RwLock<HashMap<String, LockPeer>>>,
@@ -70,24 +87,15 @@ pub(crate) struct PeerMap {
 
 impl PeerMap {
     pub(crate) async fn new() -> ResultType<Self> {
-        let db = get_arg_opt("DB_URL").unwrap_or_else(|| {
-            let mut db = "db_v2.sqlite3".to_owned();
-            #[cfg(all(windows, not(debug_assertions)))]
-            {
-                if let Some(path) = hbb_common::config::Config::icon_path().parent() {
-                    db = format!("{}\\{}", path.to_str().unwrap_or("."), db);
-                }
-            }
-            #[cfg(not(windows))]
-            {
-                db = format!("./{db}");
-            }
-            db
-        });
+        let db = resolve_db_url();
         log::info!("DB_URL={}", db);
+        Self::with_db_url(&db).await
+    }
+
+    pub(crate) async fn with_db_url(db: &str) -> ResultType<Self> {
         let pm = Self {
             map: Default::default(),
-            db: database::Database::new(&db).await?,
+            db: database::Database::new(db).await?,
         };
         Ok(pm)
     }
