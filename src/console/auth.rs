@@ -137,8 +137,11 @@ impl LoginLimiter {
     }
 }
 
-/// The client address: the TCP peer (`ConnectInfo`), or the first `X-Forwarded-For`
-/// entry when `TRUST_PROXY=Y`. Falls back to 127.0.0.1 when neither is available.
+/// The client address: the TCP peer (`ConnectInfo`), or, when `TRUST_PROXY=Y`, the
+/// rightmost `X-Forwarded-For` entry. Reverse proxies (nginx, Caddy, Traefik, DSM)
+/// append the real client address, so everything left of it is client-controlled and
+/// must not be trusted (a spoofed entry would get a fresh rate-limit bucket).
+/// Falls back to 127.0.0.1 when neither is available.
 pub(crate) fn client_ip(headers: &HeaderMap, connect: Option<SocketAddr>) -> IpAddr {
     let trust_proxy = get_arg("TRUST_PROXY").eq_ignore_ascii_case("Y");
     client_ip_from(headers, connect, trust_proxy)
@@ -146,11 +149,15 @@ pub(crate) fn client_ip(headers: &HeaderMap, connect: Option<SocketAddr>) -> IpA
 
 fn client_ip_from(headers: &HeaderMap, connect: Option<SocketAddr>, trust_proxy: bool) -> IpAddr {
     if trust_proxy {
+        // Last header line, last non-empty entry. If that entry does not parse, fall
+        // back to the TCP peer rather than walking further left.
         let forwarded = headers
-            .get("x-forwarded-for")
+            .get_all("x-forwarded-for")
+            .iter()
+            .last()
             .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.split(',').next())
-            .and_then(|v| v.trim().parse::<IpAddr>().ok());
+            .and_then(|v| v.rsplit(',').map(str::trim).find(|e| !e.is_empty()))
+            .and_then(|e| e.parse::<IpAddr>().ok());
         if let Some(ip) = forwarded {
             return ip;
         }
@@ -294,11 +301,34 @@ mod tests {
 
     #[test]
     fn client_ip_honors_forwarded_for_only_when_trusted() {
-        let mut h = HeaderMap::new();
-        h.insert("x-forwarded-for", "203.0.113.7, 10.0.0.1".parse().unwrap());
         let peer: SocketAddr = "192.0.2.1:4000".parse().unwrap();
+        let xff = |v: &str| {
+            let mut h = HeaderMap::new();
+            h.insert("x-forwarded-for", v.parse().unwrap());
+            h
+        };
+        // The proxy appends the real client: the rightmost entry wins, the
+        // client-controlled leftmost one is ignored.
+        let h = xff("6.6.6.6, 203.0.113.9");
+        assert_eq!(client_ip_from(&h, Some(peer), true), ip("203.0.113.9"));
+        // Untrusted: the header is ignored entirely.
         assert_eq!(client_ip_from(&h, Some(peer), false), ip("192.0.2.1"));
-        assert_eq!(client_ip_from(&h, Some(peer), true), ip("203.0.113.7"));
+        // Trailing empty entries are skipped.
+        assert_eq!(
+            client_ip_from(&xff("6.6.6.6, 203.0.113.9, "), Some(peer), true),
+            ip("203.0.113.9")
+        );
+        // An unparseable rightmost entry falls back to the TCP peer, never to an
+        // entry further left.
+        assert_eq!(
+            client_ip_from(&xff("6.6.6.6, garbage"), Some(peer), true),
+            ip("192.0.2.1")
+        );
+        // With several header lines, the last line holds the proxy's entry.
+        let mut multi = HeaderMap::new();
+        multi.append("x-forwarded-for", "6.6.6.6".parse().unwrap());
+        multi.append("x-forwarded-for", "7.7.7.7, 203.0.113.10".parse().unwrap());
+        assert_eq!(client_ip_from(&multi, Some(peer), true), ip("203.0.113.10"));
         assert_eq!(
             client_ip_from(&HeaderMap::new(), None, true),
             ip("127.0.0.1")
