@@ -1,6 +1,7 @@
 target
 id*
 db*
+!src/console/db/
 debian-build
 debian/.debhelper
 debian/debhelper-build-stamp

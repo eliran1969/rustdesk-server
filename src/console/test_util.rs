@@ -16,9 +16,51 @@ pub(crate) async fn test_pool() -> SqlitePool {
         .unwrap()
 }
 
+/// Creates the `peer` table exactly as hbbs does (src/database.rs), so console
+/// tests mirror production.
+pub(crate) async fn create_peer_table(pool: &SqlitePool) {
+    sqlx::query(
+        "
+        create table if not exists peer (
+            guid blob primary key not null,
+            id varchar(100) not null,
+            uuid blob not null,
+            pk blob not null,
+            created_at datetime not null default(current_timestamp),
+            user blob,
+            status tinyint,
+            note varchar(300),
+            info text not null
+        ) without rowid;
+        create unique index if not exists index_peer_id on peer (id);
+        create index if not exists index_peer_user on peer (user);
+        create index if not exists index_peer_created_at on peer (created_at);
+        create index if not exists index_peer_status on peer (status);
+        ",
+    )
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+#[allow(dead_code)]
+pub(crate) async fn insert_peer(pool: &SqlitePool, id: &str, uuid: &[u8]) {
+    let guid = uuid::Uuid::new_v4().as_bytes().to_vec();
+    sqlx::query("insert into peer(guid, id, uuid, pk, info) values(?, ?, ?, x'', '{}')")
+        .bind(guid)
+        .bind(id)
+        .bind(uuid)
+        .execute(pool)
+        .await
+        .unwrap();
+}
+
 pub(crate) async fn test_app() -> Router {
+    let db = test_pool().await;
+    create_peer_table(&db).await;
+    super::db::migrations::migrate(&db, ":memory:").await.unwrap();
     router(ConsoleState {
-        db: test_pool().await,
+        db,
         pm: test_pm().await,
     })
 }

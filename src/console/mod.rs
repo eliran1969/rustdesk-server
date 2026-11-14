@@ -1,4 +1,5 @@
 pub(crate) mod api;
+pub(crate) mod db;
 pub(crate) mod error;
 pub(crate) mod state;
 #[cfg(test)]
@@ -54,6 +55,10 @@ pub(crate) async fn start(pm: PeerMap, db_url: String) {
                 return;
             }
         };
+        if let Err(e) = db::migrations::migrate(&db, &db_url).await {
+            log::error!("console: database migration failed: {}", e);
+            return;
+        }
         let addr = SocketAddr::from(([0, 0, 0, 0], port));
         let listener = match bind(addr) {
             Ok(l) => l,
