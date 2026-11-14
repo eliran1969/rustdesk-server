@@ -11,6 +11,8 @@ use serde_json::json;
 pub(crate) enum ApiError {
     BadRequest(String),
     Unauthorized,
+    /// Login failure; same body for unknown user, wrong password and disabled user.
+    WrongCredentials,
     Forbidden,
     NotFound,
     TooManyRequests,
@@ -22,6 +24,10 @@ impl IntoResponse for ApiError {
         let (status, msg) = match self {
             ApiError::BadRequest(m) => (StatusCode::BAD_REQUEST, m),
             ApiError::Unauthorized => (StatusCode::UNAUTHORIZED, "Unauthorized".to_owned()),
+            ApiError::WrongCredentials => (
+                StatusCode::UNAUTHORIZED,
+                "Wrong username or password".to_owned(),
+            ),
             ApiError::Forbidden => (StatusCode::FORBIDDEN, "Forbidden".to_owned()),
             ApiError::NotFound => (StatusCode::NOT_FOUND, "Not found".to_owned()),
             ApiError::TooManyRequests => (
@@ -40,6 +46,12 @@ impl IntoResponse for ApiError {
     }
 }
 
+impl From<hbb_common::anyhow::Error> for ApiError {
+    fn from(e: hbb_common::anyhow::Error) -> Self {
+        ApiError::Internal(e.to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -50,6 +62,7 @@ mod tests {
         let cases = [
             (ApiError::BadRequest("bad".into()), 400, r#"{"error":"bad"}"#),
             (ApiError::Unauthorized, 401, r#"{"error":"Unauthorized"}"#),
+            (ApiError::WrongCredentials, 401, r#"{"error":"Wrong username or password"}"#),
             (ApiError::Forbidden, 403, r#"{"error":"Forbidden"}"#),
             (ApiError::NotFound, 404, r#"{"error":"Not found"}"#),
             (ApiError::TooManyRequests, 429, r#"{"error":"Too many requests"}"#),

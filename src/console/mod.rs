@@ -1,4 +1,5 @@
 pub(crate) mod api;
+pub(crate) mod auth;
 pub(crate) mod db;
 pub(crate) mod error;
 pub(crate) mod state;
@@ -6,17 +7,28 @@ pub(crate) mod state;
 pub(crate) mod test_util;
 
 use crate::{common::get_arg_or, peer::PeerMap};
-use axum::{routing::get, Router};
+use axum::{
+    routing::{get, post},
+    Router,
+};
 use hbb_common::{log, tokio, ResultType};
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use state::ConsoleState;
-use std::{net::SocketAddr, str::FromStr, time::Duration};
+use std::{net::SocketAddr, str::FromStr, sync::Arc, time::Duration};
 
 const DEFAULT_PORT: u16 = 21114;
 
 pub(crate) fn router(state: ConsoleState) -> Router {
     Router::new()
         .route("/api/login-options", get(api::client::login_options))
+        .route("/api/login", post(api::account::login))
+        .route("/api/currentUser", post(api::account::current_user))
+        .route("/api/logout", post(api::account::logout))
+        .route("/api/console/me", get(api::account::console_me))
+        .route(
+            "/api/console/change-password",
+            post(api::account::change_password),
+        )
         .layer(axum::Extension(state))
 }
 
@@ -89,7 +101,11 @@ pub(crate) async fn start(pm: PeerMap, db_url: String) {
             }
         };
         log::info!("web console listening on {}", addr);
-        let app = router(ConsoleState { db, pm });
+        let app = router(ConsoleState {
+            db,
+            pm,
+            limiter: Arc::new(auth::LoginLimiter::new()),
+        });
         if let Err(e) = server
             .serve(app.into_make_service_with_connect_info::<SocketAddr>())
             .await

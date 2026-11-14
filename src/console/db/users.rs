@@ -9,7 +9,7 @@ use hbb_common::{
 use sqlx::{sqlite::SqliteRow, Row, SqlitePool};
 
 const BCRYPT_COST: u32 = 12;
-const MIN_PASSWORD_LEN: usize = 8;
+pub(crate) const MIN_PASSWORD_LEN: usize = 8;
 const GENERATED_PASSWORD_LEN: usize = 16;
 // No 0/O/1/l/I to avoid ambiguity when the password is read from a log.
 const PASSWORD_ALPHABET: &[u8] = b"abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -94,6 +94,25 @@ pub(crate) async fn set_password(
     .bind(hash)
     .bind(must_change)
     .bind(name)
+    .execute(pool)
+    .await?;
+    Ok(res.rows_affected() > 0)
+}
+
+/// Stores an already computed bcrypt hash (lets callers hash off the async runtime).
+/// Returns whether the user was found.
+pub(crate) async fn update_password_hash(
+    pool: &SqlitePool,
+    guid: &[u8],
+    hash: &str,
+    must_change: bool,
+) -> ResultType<bool> {
+    let res = sqlx::query(
+        "update console_user set password_hash = ?, must_change_password = ? where guid = ?",
+    )
+    .bind(hash)
+    .bind(must_change)
+    .bind(guid)
     .execute(pool)
     .await?;
     Ok(res.rows_affected() > 0)

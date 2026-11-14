@@ -79,13 +79,20 @@ pub(crate) async fn insert_user(
 }
 
 pub(crate) async fn test_app() -> Router {
+    test_app_with_db().await.0
+}
+
+/// Like `test_app`, but also returns the (shared, in-memory) pool for seeding and asserts.
+pub(crate) async fn test_app_with_db() -> (Router, SqlitePool) {
     let db = test_pool().await;
     create_peer_table(&db).await;
     super::db::migrations::migrate(&db, ":memory:").await.unwrap();
-    router(ConsoleState {
-        db,
+    let app = router(ConsoleState {
+        db: db.clone(),
         pm: test_pm().await,
-    })
+        limiter: std::sync::Arc::new(super::auth::LoginLimiter::new()),
+    });
+    (app, db)
 }
 
 pub(crate) async fn body_string(res: Response) -> String {
