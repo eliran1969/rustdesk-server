@@ -21,6 +21,9 @@ const DEFAULT_PORT: u16 = 21114;
 pub(crate) fn router(state: ConsoleState) -> Router {
     Router::new()
         .route("/api/login-options", get(api::client::login_options))
+        .route("/api/sysinfo", post(api::client::sysinfo))
+        .route("/api/sysinfo_ver", post(api::client::sysinfo_ver))
+        .route("/api/heartbeat", post(api::client::heartbeat))
         .route("/api/login", post(api::account::login))
         .route("/api/currentUser", post(api::account::current_user))
         .route("/api/logout", post(api::account::logout))
