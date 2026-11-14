@@ -30,6 +30,10 @@ async fn open_pool(db_url: &str) -> Result<sqlx::SqlitePool, sqlx::Error> {
         .await
 }
 
+pub(crate) fn bind(addr: SocketAddr) -> std::io::Result<std::net::TcpListener> {
+    std::net::TcpListener::bind(addr)
+}
+
 /// Starts the web console in the background. Never fails: problems are logged only.
 pub(crate) async fn start(pm: PeerMap, db_url: String) {
     let port: u16 = get_arg_or("API_PORT", DEFAULT_PORT.to_string())
@@ -51,10 +55,17 @@ pub(crate) async fn start(pm: PeerMap, db_url: String) {
             }
         };
         let addr = SocketAddr::from(([0, 0, 0, 0], port));
-        let server = match axum::Server::try_bind(&addr) {
-            Ok(builder) => builder,
+        let listener = match bind(addr) {
+            Ok(l) => l,
             Err(e) => {
                 log::error!("console: failed to bind {}: {}", addr, e);
+                return;
+            }
+        };
+        let server = match axum::Server::from_tcp(listener) {
+            Ok(builder) => builder,
+            Err(e) => {
+                log::error!("console: failed to start server on {}: {}", addr, e);
                 return;
             }
         };
