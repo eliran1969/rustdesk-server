@@ -55,6 +55,29 @@ pub(crate) async fn insert_peer(pool: &SqlitePool, id: &str, uuid: &[u8]) {
         .unwrap();
 }
 
+/// Inserts a console user with a real bcrypt hash; returns its guid.
+#[allow(dead_code)]
+pub(crate) async fn insert_user(
+    pool: &SqlitePool,
+    name: &str,
+    password: &str,
+    is_admin: bool,
+) -> Vec<u8> {
+    let guid = uuid::Uuid::new_v4().as_bytes().to_vec();
+    let hash = super::db::users::hash_password(password).unwrap();
+    sqlx::query(
+        "insert into console_user(guid, name, password_hash, is_admin) values(?, ?, ?, ?)",
+    )
+    .bind(&guid)
+    .bind(name)
+    .bind(hash)
+    .bind(is_admin)
+    .execute(pool)
+    .await
+    .unwrap();
+    guid
+}
+
 pub(crate) async fn test_app() -> Router {
     let db = test_pool().await;
     create_peer_table(&db).await;

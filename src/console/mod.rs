@@ -7,7 +7,7 @@ pub(crate) mod test_util;
 
 use crate::{common::get_arg_or, peer::PeerMap};
 use axum::{routing::get, Router};
-use hbb_common::{log, tokio};
+use hbb_common::{log, tokio, ResultType};
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use state::ConsoleState;
 use std::{net::SocketAddr, str::FromStr, time::Duration};
@@ -29,6 +29,13 @@ async fn open_pool(db_url: &str) -> Result<sqlx::SqlitePool, sqlx::Error> {
         .max_connections(4)
         .connect_with(opts)
         .await
+}
+
+/// CLI entry (rustdesk-utils): sets a console user's password. Returns whether the user exists.
+pub async fn cli_set_password(db_url: &str, name: &str, password: &str) -> ResultType<bool> {
+    let pool = open_pool(db_url).await?;
+    db::migrations::migrate(&pool, db_url).await?;
+    db::users::set_password(&pool, name, password, false).await
 }
 
 pub(crate) fn bind(addr: SocketAddr) -> std::io::Result<std::net::TcpListener> {
@@ -58,6 +65,13 @@ pub(crate) async fn start(pm: PeerMap, db_url: String) {
         if let Err(e) = db::migrations::migrate(&db, &db_url).await {
             log::error!("console: database migration failed: {}", e);
             return;
+        }
+        match db::users::ensure_initial_admin(&db).await {
+            Ok(Some(pw)) => log::warn!(
+                "Console initial admin password: {pw} (change it on first login)"
+            ),
+            Ok(None) => {}
+            Err(e) => log::error!("console: failed to create initial admin: {}", e),
         }
         let addr = SocketAddr::from(([0, 0, 0, 0], port));
         let listener = match bind(addr) {

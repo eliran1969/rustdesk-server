@@ -14,7 +14,8 @@ fn print_help() {
 Available Commands:
     genkeypair                                   Generate a new keypair
     validatekeypair [public key] [secret key]    Validate an existing keypair
-    doctor [rustdesk-server]                     Check for server connection problems"
+    doctor [rustdesk-server]                     Check for server connection problems
+    set_password [username] [password]           Set a web console user's password"
     );
     process::exit(0x0001);
 }
@@ -139,6 +140,14 @@ fn doctor(server_address_unclean: &str) {
     }
 }
 
+fn set_password(name: &str, password: &str) -> ResultType<bool> {
+    let db_url = hbbs::common::get_arg_opt("DB_URL").unwrap_or_else(|| "./db_v2.sqlite3".to_owned());
+    let rt = hbb_common::tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    rt.block_on(hbbs::console::cli_set_password(&db_url, name, password))
+}
+
 fn main() {
     let args: Vec<_> = env::args().collect();
     if args.len() <= 1 {
@@ -164,6 +173,19 @@ fn main() {
                 error_then_help("You must supply the rustdesk-server address");
             }
             doctor(args[2].as_str());
+        }
+        "set_password" => {
+            if args.len() <= 3 {
+                error_then_help("You must supply the username and the new password");
+            }
+            match set_password(args[2].as_str(), args[3].as_str()) {
+                Ok(true) => println!("Done"),
+                Ok(false) => println!("User not found"),
+                Err(e) => {
+                    println!("{e}");
+                    process::exit(0x0001);
+                }
+            }
         }
         _ => print_help(),
     }
