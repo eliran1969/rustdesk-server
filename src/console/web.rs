@@ -32,7 +32,7 @@ pub(crate) async fn serve(method: Method, uri: Uri) -> Response {
     }
     let rel = path.trim_start_matches('/');
     // A missing hashed bundle must fail loudly, not come back as index.html.
-    if rel.starts_with("assets/") && !Assets::get(rel).is_some() {
+    if rel.starts_with("assets/") && Assets::get(rel).is_none() {
         return with_security_headers(StatusCode::NOT_FOUND.into_response());
     }
     let found = if is_safe_path(rel) {

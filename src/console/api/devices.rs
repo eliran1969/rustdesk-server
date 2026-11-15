@@ -228,6 +228,16 @@ pub(crate) async fn apply_device_changes(
                     .ok_or_else(|| ApiError::BadRequest(format!("Unknown user: {name}")))?,
             ),
         };
+        if let Some(guid) = &user {
+            let status: i64 = sqlx::query_scalar("select status from console_user where guid = ?")
+                .bind(guid)
+                .fetch_one(&mut *conn)
+                .await
+                .map_err(internal)?;
+            if status != 1 {
+                return Err(ApiError::BadRequest(format!("User is disabled: {name}")));
+            }
+        }
         sqlx::query("update peer set user = ? where guid = ?")
             .bind(user)
             .bind(peer_guid)
@@ -355,17 +365,19 @@ pub(crate) async fn delete(
     Path(guid): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
     let guid = parse_guid(&guid)?;
+    let (id, status) = {
+        let mut conn = state.db.acquire().await.map_err(internal)?;
+        peer_id_status(&mut conn, &guid).await?
+    };
+    check_disabled(status)?;
+    // Race with hbbs: `PeerMap::get` may read this row from the DB and insert it into its
+    // in-memory map concurrently with the delete. Removing the id both before the
+    // transaction and again after the commit narrows that window; if hbbs still caches
+    // the deleted row in between, the stale entry disappears when hbbs restarts.
+    state.pm.remove(&id).await;
     let mut tx = state.db.begin().await.map_err(internal)?;
-    let row: Option<(String, Option<i64>)> =
-        sqlx::query_as("select id, status from peer where guid = ?")
-            .bind(&guid)
-            .fetch_optional(&mut tx)
-            .await
-            .map_err(internal)?;
-    let (id, status) = row.ok_or(ApiError::NotFound)?;
-    if status != Some(0) {
-        return Err(ApiError::BadRequest("Disable the device first".to_owned()));
-    }
+    let (id, status) = peer_id_status(&mut tx, &guid).await?;
+    check_disabled(status)?;
     for sql in [
         "delete from console_peer_sysinfo where peer_guid = ?",
         "delete from console_peer_ext where peer_guid = ?",
@@ -380,6 +392,27 @@ pub(crate) async fn delete(
     tx.commit().await.map_err(internal)?;
     state.pm.remove(&id).await;
     Ok(Json(json!({})))
+}
+
+/// The device's hbbs id and status, or 404.
+async fn peer_id_status(
+    conn: &mut SqliteConnection,
+    guid: &[u8],
+) -> Result<(String, Option<i64>), ApiError> {
+    let row: Option<(String, Option<i64>)> =
+        sqlx::query_as("select id, status from peer where guid = ?")
+            .bind(guid)
+            .fetch_optional(conn)
+            .await
+            .map_err(internal)?;
+    row.ok_or(ApiError::NotFound)
+}
+
+fn check_disabled(status: Option<i64>) -> Result<(), ApiError> {
+    if status != Some(0) {
+        return Err(ApiError::BadRequest("Disable the device first".to_owned()));
+    }
+    Ok(())
 }
 
 /// `PATCH /api/devices/{guid}`.
@@ -892,6 +925,16 @@ mod tests {
         let (s, b) = assign("user_name", "nobody").await;
         assert_eq!(s, StatusCode::BAD_REQUEST);
         assert_eq!(b, json!({"error": "Unknown user: nobody"}));
+        assert_eq!(peer_user_name(&db, "100").await.as_deref(), Some("bob"));
+        // A disabled user cannot be assigned.
+        insert_user(&db, "carol", PW, false).await;
+        sqlx::query("update console_user set status = 0 where name = 'carol'")
+            .execute(&db)
+            .await
+            .unwrap();
+        let (s, b) = assign("user_name", "carol").await;
+        assert_eq!(s, StatusCode::BAD_REQUEST);
+        assert_eq!(b, json!({"error": "User is disabled: carol"}));
         assert_eq!(peer_user_name(&db, "100").await.as_deref(), Some("bob"));
         for kind in ["strategy_name", "ab"] {
             let (s, b) = assign(kind, "x").await;
