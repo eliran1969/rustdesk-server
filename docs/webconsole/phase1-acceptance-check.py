@@ -7,7 +7,7 @@ RustDesk client over HTTP exactly as the client code does, prints PASS/FAIL per 
 stops everything and deletes the temp dir. Exit code 0 only if every check passed.
 """
 import argparse, base64, json, os, re, shutil, sqlite3, subprocess, sys, tempfile, time
-import urllib.error, urllib.request
+import socket, urllib.error, urllib.request
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 BASE = "http://127.0.0.1:21114"
@@ -51,7 +51,7 @@ def netstat(pids):
     return found
 
 
-def main():
+def run():
     ap = argparse.ArgumentParser()
     ap.add_argument("--skip-build", action="store_true")
     ap.add_argument("--devices-py", default=r"E:\RustDesk\res\devices.py")
@@ -65,7 +65,23 @@ def main():
         r = subprocess.run(["cargo", "build", "--release", "--bin", "hbbs", "--bin", "hbbr", "--bin", "rustdesk-utils"], cwd=REPO)
         check("cargo build --release (hbbs, hbbr, rustdesk-utils)", "exit 0", r.returncode, r.returncode == 0)
         if r.returncode:
-            return finish()
+            return
+
+    busy = []
+    for port in range(21114, 21120):
+        for kind in (socket.SOCK_STREAM, socket.SOCK_DGRAM) if port == 21116 else (socket.SOCK_STREAM,):
+            for host in ("127.0.0.1", "0.0.0.0"):
+                sk = socket.socket(socket.AF_INET, kind)
+                try:
+                    sk.bind((host, port))
+                except OSError:
+                    busy.append("%s %s:%d" % ("UDP" if kind == socket.SOCK_DGRAM else "TCP", host, port))
+                finally:
+                    sk.close()
+    check("preflight: ports 21114-21119 (+UDP 21116) are free", "all free; otherwise stop the other hbbs/hbbr first",
+          ("IN USE: " + ", ".join(busy)) if busy else "all free", not busy)
+    if busy:
+        return
 
     tmp = tempfile.mkdtemp(prefix="hbbs-accept-")
     procs = []
@@ -89,7 +105,7 @@ def main():
                 break
         check("hbbs log prints initial admin password", "line found", "found" if pw else "missing", pw)
         if not pw:
-            return finish()
+            return
         time.sleep(1)
 
         # simulated client registration (peer row) + client HTTP calls
@@ -107,7 +123,8 @@ def main():
         check("POST /api/heartbeat after sysinfo", "{}", body, body == {})
         bad = dict(sysinfo, uuid=base64.b64encode(os.urandom(16)).decode(), hostname="evil-host")
         st, body = http("POST", "/api/sysinfo", bad)
-        host = json.loads(db.execute("select sysinfo from console_peer_sysinfo").fetchone()[0]).get("hostname")
+        row = db.execute("select sysinfo from console_peer_sysinfo").fetchone()
+        host = json.loads(row[0]).get("hostname") if row else None
         check("POST /api/sysinfo wrong uuid", "ID_NOT_FOUND, hostname unchanged",
               "%s / hostname=%s" % (body, host), body == "ID_NOT_FOUND" and host == "accept-test-pc")
         db.close()
@@ -178,7 +195,11 @@ def main():
             r = subprocess.run([os.path.join(rel, "rustdesk-utils" + exe), "doctor", "127.0.0.1"], capture_output=True,
                                text=True, timeout=60, cwd=tmp, env=env)
             out = r.stdout + r.stderr
-            check("rustdesk-utils doctor 127.0.0.1", "runs without error", out.strip()[-300:], r.returncode == 0)
+            oks = re.findall(r"^TCP Port (\d+) \(.*\): OK in", out, re.M)
+            errs = re.findall(r"^TCP Port (\d+) \(.*\): ERROR", out, re.M)
+            good = r.returncode == 0 and sorted(oks) == [str(p) for p in range(21114, 21120)] and not errs
+            check("rustdesk-utils doctor 127.0.0.1", "TCP 21114-21119 all OK",
+                  "OK: %s, ERROR: %s" % (oks, errs), good)
         except Exception as e:
             check("rustdesk-utils doctor 127.0.0.1", "runs", repr(e), False)
 
@@ -208,13 +229,18 @@ def main():
             time.sleep(1)
         check("processes stopped, temp dir removed", "gone", "removed" if not os.path.exists(tmp) else "STILL THERE",
               not os.path.exists(tmp))
-    return finish()
+    return
 
 
 def finish():
     ok = sum(1 for r in RESULTS if r[3])
     print("\n%d/%d checks passed" % (ok, len(RESULTS)))
     return 0 if ok == len(RESULTS) else 1
+
+
+def main():
+    run()
+    return finish()
 
 
 if __name__ == "__main__":
