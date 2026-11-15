@@ -5,7 +5,10 @@
   },
   "nav": {
     "main": "Main navigation",
-    "devices": "Devices"
+    "devices": "Devices",
+    "users": "Users",
+    "userGroups": "User groups",
+    "deviceGroups": "Device groups"
   },
   "header": {
     "language": "Language",
@@ -71,6 +74,130 @@
     "wrongOldPassword": "The current password is incorrect.",
     "passwordTooShort": "The new password must be at least 8 characters.",
     "network": "Cannot reach the server. Check your connection.",
+    "userExists": "A user with this name already exists.",
+    "disableFirst": "Disable the user before deleting.",
+    "selfProtected": "You cannot change this for your own account.",
+    "lastAdmin": "At least one active administrator must remain.",
+    "nameRequired": "Name is required.",
+    "groupExists": "A group with this name already exists.",
+    "groupNotEmpty": "The group still has members. Move them to another group first.",
+    "defaultGroupDelete": "The default group cannot be deleted.",
+    "defaultGroupRename": "The default group cannot be renamed.",
+    "adminRequired": "This action requires administrator rights.",
+    "unknownGroup": "The group \"{{name}}\" does not exist.",
+    "unknownRuleTarget": "No group or user named \"{{name}}\".",
+    "invalidRuleType": "This kind of rule is not allowed here.",
+    "notFound": "The item no longer exists. Refresh and try again.",
     "generic": "Something went wrong. Please try again."
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "close": "Close",
+    "edit": "Edit",
+    "delete": "Delete",
+    "search": "Search",
+    "clear": "Clear",
+    "actions": "Actions",
+    "total": "Total: {{count}}",
+    "pageOf": "Page {{page}} of {{pages}}",
+    "prev": "Previous page",
+    "next": "Next page"
+  },
+  "users": {
+    "title": "Users",
+    "new": "New user",
+    "createTitle": "New user",
+    "editTitle": "Edit user",
+    "searchPlaceholder": "Search by name",
+    "filterGroup": "Filter by group",
+    "allGroups": "All groups",
+    "empty": "No users found.",
+    "active": "Active",
+    "disabled": "Disabled",
+    "adminBadge": "Admin",
+    "enable": "Enable",
+    "disable": "Disable",
+    "forceLogout": "Sign out everywhere",
+    "deleteActiveHint": "Disable the user before deleting",
+    "selfHint": "You cannot disable your own account",
+    "selfAdminHint": "You cannot remove your own admin rights.",
+    "passwordHint": "At least 8 characters.",
+    "passwordKeepHint": "Leave empty to keep the current password.",
+    "defaultGroupOption": "Default",
+    "fields": {
+      "name": "Username",
+      "displayName": "Display name",
+      "password": "Password",
+      "group": "Group",
+      "email": "Email",
+      "note": "Note",
+      "isAdmin": "Administrator"
+    },
+    "columns": {
+      "name": "Username",
+      "displayName": "Display name",
+      "email": "Email",
+      "group": "Group",
+      "admin": "Admin",
+      "status": "Status",
+      "created": "Created"
+    },
+    "confirm": {
+      "enableTitle": "Enable user",
+      "enableMessage": "Enable \"{{name}}\"? They will be able to sign in again.",
+      "disableTitle": "Disable user",
+      "disableMessage": "Disable \"{{name}}\"? They will be signed out everywhere and cannot sign in until enabled again.",
+      "logoutTitle": "Sign out everywhere",
+      "logoutMessage": "Sign \"{{name}}\" out of all devices and browsers?",
+      "deleteTitle": "Delete user",
+      "deleteMessage": "Delete \"{{name}}\" permanently? Their devices will be unassigned. This cannot be undone."
+    }
+  },
+  "userGroups": {
+    "title": "User groups",
+    "new": "New group",
+    "createTitle": "New user group",
+    "editTitle": "Edit user group",
+    "searchPlaceholder": "Search by name",
+    "empty": "No groups found.",
+    "defaultBadge": "Default",
+    "defaultNameHint": "The default group cannot be renamed.",
+    "canAccessHint": "Members of this group may connect to these groups.",
+    "accessibleFromHint": "These users and groups may connect to members of this group.",
+    "fields": {
+      "name": "Name",
+      "note": "Note",
+      "canAccess": "Can access",
+      "accessibleFrom": "Accessible from"
+    },
+    "columns": {
+      "name": "Name",
+      "note": "Note",
+      "users": "Users",
+      "canAccess": "Can access",
+      "accessibleFrom": "Accessible from"
+    },
+    "confirmDeleteTitle": "Delete group",
+    "confirmDeleteMessage": "Delete the group \"{{name}}\"? This cannot be undone.",
+    "confirmDeleteNotEmpty": "The group \"{{name}}\" still has {{count}} users. Move them to another group before deleting it."
+  },
+  "deviceGroups": {
+    "title": "Device groups",
+    "comingSoon": "This page is coming soon."
+  },
+  "rules": {
+    "type": "Type",
+    "target": "Name",
+    "choose": "Choose…",
+    "add": "Add",
+    "none": "None yet.",
+    "remove": "Remove {{name}}",
+    "types": {
+      "userGroup": "User group",
+      "deviceGroup": "Device group",
+      "user": "User",
+      "unknown": "Other"
+    }
   }
 }

@@ -5,7 +5,10 @@
   },
   "nav": {
     "main": "ניווט ראשי",
-    "devices": "מכשירים"
+    "devices": "מכשירים",
+    "users": "משתמשים",
+    "userGroups": "קבוצות משתמשים",
+    "deviceGroups": "קבוצות מכשירים"
   },
   "header": {
     "language": "שפה",
@@ -71,6 +74,130 @@
     "wrongOldPassword": "הסיסמה הנוכחית שגויה.",
     "passwordTooShort": "הסיסמה החדשה חייבת להכיל לפחות 8 תווים.",
     "network": "אין חיבור לשרת. בדקו את החיבור.",
+    "userExists": "כבר קיים משתמש בשם הזה.",
+    "disableFirst": "יש להשבית את המשתמש לפני המחיקה.",
+    "selfProtected": "אי אפשר לשנות את זה בחשבון שלך.",
+    "lastAdmin": "חייב להישאר לפחות מנהל פעיל אחד.",
+    "nameRequired": "חובה למלא שם.",
+    "groupExists": "כבר קיימת קבוצה בשם הזה.",
+    "groupNotEmpty": "בקבוצה יש עדיין חברים. צריך להעביר אותם לקבוצה אחרת קודם.",
+    "defaultGroupDelete": "אי אפשר למחוק את קבוצת ברירת המחדל.",
+    "defaultGroupRename": "אי אפשר לשנות את השם של קבוצת ברירת המחדל.",
+    "adminRequired": "הפעולה הזו דורשת הרשאות ניהול.",
+    "unknownGroup": "הקבוצה \"{{name}}\" לא קיימת.",
+    "unknownRuleTarget": "אין קבוצה או משתמש בשם \"{{name}}\".",
+    "invalidRuleType": "סוג הכלל הזה לא מותר כאן.",
+    "notFound": "הפריט כבר לא קיים. כדאי לרענן ולנסות שוב.",
     "generic": "משהו השתבש. נסו שוב."
+  },
+  "common": {
+    "save": "שמירה",
+    "cancel": "ביטול",
+    "close": "סגירה",
+    "edit": "עריכה",
+    "delete": "מחיקה",
+    "search": "חיפוש",
+    "clear": "ניקוי",
+    "actions": "פעולות",
+    "total": "סה״כ: {{count}}",
+    "pageOf": "עמוד {{page}} מתוך {{pages}}",
+    "prev": "העמוד הקודם",
+    "next": "העמוד הבא"
+  },
+  "users": {
+    "title": "משתמשים",
+    "new": "משתמש חדש",
+    "createTitle": "משתמש חדש",
+    "editTitle": "עריכת משתמש",
+    "searchPlaceholder": "חיפוש לפי שם",
+    "filterGroup": "סינון לפי קבוצה",
+    "allGroups": "כל הקבוצות",
+    "empty": "לא נמצאו משתמשים.",
+    "active": "פעיל",
+    "disabled": "מושבת",
+    "adminBadge": "מנהל",
+    "enable": "הפעלה",
+    "disable": "השבתה",
+    "forceLogout": "ניתוק מכל המכשירים",
+    "deleteActiveHint": "יש להשבית את המשתמש לפני המחיקה",
+    "selfHint": "אי אפשר להשבית את החשבון שלך",
+    "selfAdminHint": "אי אפשר להסיר את הרשאות הניהול מהחשבון שלך.",
+    "passwordHint": "לפחות 8 תווים.",
+    "passwordKeepHint": "להשאיר ריק כדי לשמור על הסיסמה הנוכחית.",
+    "defaultGroupOption": "ברירת מחדל",
+    "fields": {
+      "name": "שם משתמש",
+      "displayName": "שם תצוגה",
+      "password": "סיסמה",
+      "group": "קבוצה",
+      "email": "אימייל",
+      "note": "הערה",
+      "isAdmin": "הרשאות ניהול"
+    },
+    "columns": {
+      "name": "שם משתמש",
+      "displayName": "שם תצוגה",
+      "email": "אימייל",
+      "group": "קבוצה",
+      "admin": "ניהול",
+      "status": "סטטוס",
+      "created": "נוצר"
+    },
+    "confirm": {
+      "enableTitle": "הפעלת משתמש",
+      "enableMessage": "להפעיל את \"{{name}}\"? תתאפשר שוב כניסה עם החשבון.",
+      "disableTitle": "השבתת משתמש",
+      "disableMessage": "להשבית את \"{{name}}\"? החשבון ינותק מכל המכשירים ולא תתאפשר כניסה עד להפעלה מחדש.",
+      "logoutTitle": "ניתוק מכל המכשירים",
+      "logoutMessage": "לנתק את \"{{name}}\" מכל המכשירים והדפדפנים?",
+      "deleteTitle": "מחיקת משתמש",
+      "deleteMessage": "למחוק את \"{{name}}\" לצמיתות? השיוך של המכשירים לחשבון יוסר. אי אפשר לבטל את הפעולה."
+    }
+  },
+  "userGroups": {
+    "title": "קבוצות משתמשים",
+    "new": "קבוצה חדשה",
+    "createTitle": "קבוצת משתמשים חדשה",
+    "editTitle": "עריכת קבוצת משתמשים",
+    "searchPlaceholder": "חיפוש לפי שם",
+    "empty": "לא נמצאו קבוצות.",
+    "defaultBadge": "ברירת מחדל",
+    "defaultNameHint": "אי אפשר לשנות את השם של קבוצת ברירת המחדל.",
+    "canAccessHint": "חברי הקבוצה יכולים להתחבר אל הקבוצות האלה.",
+    "accessibleFromHint": "המשתמשים והקבוצות האלה יכולים להתחבר אל חברי הקבוצה.",
+    "fields": {
+      "name": "שם",
+      "note": "הערה",
+      "canAccess": "יכולה לגשת אל",
+      "accessibleFrom": "נגישה מ"
+    },
+    "columns": {
+      "name": "שם",
+      "note": "הערה",
+      "users": "משתמשים",
+      "canAccess": "יכולה לגשת אל",
+      "accessibleFrom": "נגישה מ"
+    },
+    "confirmDeleteTitle": "מחיקת קבוצה",
+    "confirmDeleteMessage": "למחוק את הקבוצה \"{{name}}\"? אי אפשר לבטל את הפעולה.",
+    "confirmDeleteNotEmpty": "בקבוצה \"{{name}}\" יש עדיין {{count}} משתמשים. צריך להעביר אותם לקבוצה אחרת לפני המחיקה."
+  },
+  "deviceGroups": {
+    "title": "קבוצות מכשירים",
+    "comingSoon": "העמוד הזה יגיע בקרוב."
+  },
+  "rules": {
+    "type": "סוג",
+    "target": "שם",
+    "choose": "בחירה…",
+    "add": "הוספה",
+    "none": "אין עדיין.",
+    "remove": "הסרת {{name}}",
+    "types": {
+      "userGroup": "קבוצת משתמשים",
+      "deviceGroup": "קבוצת מכשירים",
+      "user": "משתמש",
+      "unknown": "אחר"
+    }
   }
 }

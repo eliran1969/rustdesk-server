@@ -125,13 +125,112 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   return body as T
 }
 
+/** A translated error: i18n key, interpolation values, and the raw server text when unmapped. */
+export interface ErrorInfo {
+  key: string
+  params?: Record<string, string>
+  detail?: string
+}
+
+/** Server error strings with a fixed text → i18n key. */
+const EXACT_ERRORS: Record<string, string> = {
+  'Wrong username or password': 'errors.wrongCredentials',
+  'Wrong old password': 'errors.wrongOldPassword',
+  'User already exists': 'errors.userExists',
+  'Disable the user first': 'errors.disableFirst',
+  'Cannot change your own admin status': 'errors.selfProtected',
+  'Cannot remove the last active administrator': 'errors.lastAdmin',
+  'Name is required': 'errors.nameRequired',
+  'Group already exists': 'errors.groupExists',
+  'Group is not empty': 'errors.groupNotEmpty',
+  'Cannot delete the default group': 'errors.defaultGroupDelete',
+  'Cannot rename the default group': 'errors.defaultGroupRename',
+  'Admin required!': 'errors.adminRequired',
+}
+
+/** Server error strings that end with a name → i18n key with `{{name}}`. */
+const PREFIX_ERRORS: [string, string][] = [
+  ['Unknown group or user: ', 'errors.unknownRuleTarget'],
+  ['Unknown group: ', 'errors.unknownGroup'],
+  ['Invalid rule type: ', 'errors.invalidRuleType'],
+]
+
+/** Maps an API failure to a translated message; unknown server text is kept as `detail`. */
+export function describeError(err: unknown): ErrorInfo {
+  if (!(err instanceof ApiError)) return { key: 'errors.generic' }
+  if (err.status === 0) return { key: 'errors.network' }
+  if (err.status === 429) return { key: 'errors.tooManyAttempts' }
+  const exact = EXACT_ERRORS[err.message]
+  if (exact) return { key: exact }
+  if (err.message.startsWith('Password must be at least')) return { key: 'errors.passwordTooShort' }
+  for (const [prefix, key] of PREFIX_ERRORS) {
+    if (err.message.startsWith(prefix)) {
+      return { key, params: { name: err.message.slice(prefix.length) } }
+    }
+  }
+  if (err.status === 404) return { key: 'errors.notFound' }
+  return { key: 'errors.generic', detail: err.message }
+}
+
 /** Maps an API failure to an i18n key so the user sees a translated message. */
 export function errorKey(err: unknown): string {
-  if (!(err instanceof ApiError)) return 'errors.generic'
-  if (err.status === 0) return 'errors.network'
-  if (err.status === 429) return 'errors.tooManyAttempts'
-  if (err.message === 'Wrong username or password') return 'errors.wrongCredentials'
-  if (err.message === 'Wrong old password') return 'errors.wrongOldPassword'
-  if (err.message.startsWith('Password must be at least')) return 'errors.passwordTooShort'
-  return 'errors.generic'
+  return describeError(err).key
+}
+
+/** Access rule target: 0 user group, 1 device group, 2 user. */
+export interface Rule {
+  type: number
+  name: string
+}
+
+export interface ListResponse<T> {
+  total: number
+  data: T[]
+}
+
+export interface ManagedUser {
+  guid: string
+  name: string
+  display_name: string
+  email: string
+  note: string
+  status: number
+  is_admin: boolean
+  group_name: string | null
+  created_at: string | null
+}
+
+export interface UserGroup {
+  guid: string
+  name: string
+  note: string
+  created_at: string | null
+  allowed_incomings: Rule[]
+  allowed_outgoings: Rule[]
+  user_count: number
+}
+
+export interface DeviceGroup {
+  guid: string
+  name: string
+  note?: string
+}
+
+/** The built-in group every user/device falls back to (matched case-insensitively). */
+export function isDefaultGroup(name: string | null | undefined): boolean {
+  return (name ?? '').toLowerCase() === 'default'
+}
+
+/** `?current&pageSize` plus the non-empty filters, for a list endpoint. */
+export function listQuery(
+  path: string,
+  page: number,
+  pageSize: number,
+  filters: Record<string, string> = {},
+): string {
+  const params = new URLSearchParams({ current: String(page), pageSize: String(pageSize) })
+  for (const [k, v] of Object.entries(filters)) {
+    if (v) params.set(k, v)
+  }
+  return `${path}?${params.toString()}`
 }

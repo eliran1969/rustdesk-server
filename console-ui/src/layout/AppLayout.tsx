@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { LanguageSwitch } from '../components/LanguageSwitch'
-import { LogoutIcon, MonitorIcon } from '../components/Icons'
+import { FolderIcon, LogoutIcon, MonitorIcon, UserIcon, UsersIcon } from '../components/Icons'
 
 export function AppLayout() {
   const { t } = useTranslation()
@@ -25,6 +25,22 @@ export function AppLayout() {
             <MonitorIcon />
             <span>{t('nav.devices')}</span>
           </NavLink>
+          {user?.is_admin && (
+            <>
+              <NavLink to="/users" className="nav-item">
+                <UserIcon />
+                <span>{t('nav.users')}</span>
+              </NavLink>
+              <NavLink to="/user-groups" className="nav-item">
+                <UsersIcon />
+                <span>{t('nav.userGroups')}</span>
+              </NavLink>
+              <NavLink to="/device-groups" className="nav-item">
+                <FolderIcon />
+                <span>{t('nav.deviceGroups')}</span>
+              </NavLink>
+            </>
+          )}
         </nav>
       </aside>
       <div className="main-col">
