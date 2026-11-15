@@ -68,7 +68,61 @@ sudo docker inspect --format '{{.Config.Cmd}} {{.Config.Entrypoint}}' "$OLD_HBBR
 sudo docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$OLD_HBBR"
 ```
 
-אותו מידע מופיע ב-Container Manager → ה-container → **Details** (פקודה, Environment). דברים שחשוב לשים לב אליהם: דגלים כמו `-r your.host:21117` (כתובת ה-relay) או `-k _`, ומשתנים כמו `RELAY_SERVERS`, `ENCRYPTED_ONLY`, `ALWAYS_USE_RELAY`. בסעיף 4 מעבירים אותם ל-container החדש.
+אותו מידע מופיע ב-Container Manager → ה-container → **Details** (פקודה, Environment). דברים שחשוב לשים לב אליהם: דגלים כמו `-r your.host:21117` (כתובת ה-relay) או `-k _`, ומשתנים כמו `RELAY`, `RELAY_SERVERS`, `ENCRYPTED_ONLY`, `ALWAYS_USE_RELAY`. בסעיף 4 מעבירים אותם ל-container החדש.
+
+**חשוב: איך מתרגמים את ההגדרות הישנות.** התוכנות `hbbs` ו-`hbbr` עצמן **לא קוראות** את המשתנים `RELAY` ו-`ENCRYPTED_ONLY`. ב-image של s6 רק סקריפט ההפעלה הפנימי שלו (`/etc/s6-overlay/s6-rc.d/hbbs/run`) הופך אותם לדגלים (`hbbs -r $RELAY` ו-`-k _`). ה-image החדש לא מריץ את הסקריפט הזה, ולכן אם רק מעתיקים את המשתנים, הם פשוט לא ישפיעו. מתרגמים כך:
+
+| מה היה ב-container הישן | מה כותבים ב-container החדש |
+|---|---|
+| s6: `RELAY=x` | `command: hbbs -r x` (ב-hbbs) |
+| s6: `ENCRYPTED_ONLY=1` | מוסיפים `-k _` **גם** לפקודה של hbbs **וגם** לפקודה של hbbr: `command: hbbs -r x -k _` ו-`command: hbbr -k _` |
+| classic: פקודה עם דגלים (למשל `hbbs -r x -k _` או `hbbr -k _`) | מעתיקים את הדגלים **כמו שהם** לשורת `command` של אותו שירות |
+| `RELAY_SERVERS`, `ALWAYS_USE_RELAY` ושאר המשתנים | מעתיקים כמו שהם ל-`environment` (התוכנות קוראות אותם ישירות) |
+
+הערה למתקדמים: התוכנות קוראות גם משתני סביבה בשמות הדגלים עצמם, כך ש-`KEY=_` (ב-hbbs וב-hbbr) שקול ל-`-k _`, ו-`RELAY_SERVERS=x` (ב-hbbs) שקול ל-`-r x`. דגל בשורת הפקודה גובר על המשתנה. הדרך המומלצת היא בכל זאת הדגלים, כי רואים אותם מיד בשורת `command`.
+
+### ג. מיפוי הפורטים של ה-container הישן
+
+קובץ ה-compose החדש משתמש ב-`network_mode: host`: התוכנות מאזינות ישירות על הפורטים של ה-NAS, בלי מיפוי. הפורטים הרגילים: hbbs על 21115, 21116 (TCP ו-UDP) ו-21118, hbbr על 21117 ו-21119, והקונסולה על 21114. רושמים איך ה-container הישן היה מחובר לרשת:
+
+```bash
+sudo docker inspect --format '{{.HostConfig.NetworkMode}} {{json .HostConfig.PortBindings}}' "$OLD_HBBS"
+sudo docker inspect --format '{{.HostConfig.NetworkMode}} {{json .HostConfig.PortBindings}}' "$OLD_HBBR"
+```
+
+(ב-Container Manager: ה-container → **Details** → לשונית **Network** ו-**Port Settings**.)
+
+- אם מופיע `host`, או שכל פורט ממופה לאותו מספר בצד ה-NAS (למשל `21116` ל-`21116`), אין מה לשנות.
+- אם בצד ה-NAS היו מספרים אחרים (למשל `31116` ל-`21116`), הלקוחות והנתב מכירים את המספרים האלה, וצריך לבחור אחת משתי האפשרויות:
+
+**אפשרות א: נשארים ב-host ומשנים את הפורטים בדגלים.** מתאים כשהמספרים החדשים שומרים על אותם הפרשים כמו הרגילים (21115 עד 21119 עברו כולם באותה תוספת). הדגל `-p` של hbbs קובע את הפורט הראשי (במקום 21116), וממנו נגזרים הפורט הראשי פחות 1 (במקום 21115) והראשי ועוד 2 (במקום 21118). הדגל `-p` של hbbr קובע את פורט ה-relay (במקום 21117), והפורט שלו ועוד 2 משמש ל-websocket (במקום 21119). דוגמה לפורטים 31115 עד 31119:
+
+```yaml
+  hbbs:
+    command: hbbs -p 31116 -r your.host:31117
+  hbbr:
+    command: hbbr -p 31117
+```
+
+(מוסיפים לזה את שאר הדגלים שלכם, למשל `-k _`.) הקונסולה נשארת על `API_PORT` (21114 כברירת מחדל), ואפשר לשנות גם אותו.
+
+**אפשרות ב: עוברים למיפוי פורטים מפורש.** מוחקים משני השירותים את השורה `network_mode: host` ומוסיפים `ports:`, כשהמספר השמאלי הוא הפורט ב-NAS **כמו שהיה ב-container הישן**, והימני הוא הפורט הרגיל בתוך ה-container:
+
+```yaml
+  hbbs:
+    ports:
+      - "21114:21114"
+      - "31115:21115"
+      - "31116:21116"
+      - "31116:21116/udp"
+      - "31118:21118"
+  hbbr:
+    ports:
+      - "31117:21117"
+      - "31119:21119"
+```
+
+(הקונסולה חדשה, אז אין לה מיפוי ישן: `21114:21114` או כל פורט פנוי אחר בצד שמאל.) באפשרות ב כתובת ה-relay בדגל `-r` של hbbs היא הכתובת והפורט **החיצוניים** (למשל `your.host:31117`), כמו שהיו ב-container הישן.
 
 ## 2. גיבוי מלא של התיקייה
 
@@ -163,18 +217,41 @@ sudo docker rename "$OLD_HBBR" "${OLD_HBBR}-old"
 
 2. מעבירים את ההגדרות הישנות. מעתיקים את הקובץ `docker/docker-compose.console.yml` ל-NAS ופותחים אותו לעריכה:
    - שורת ה-volume (בשני השירותים): מחליפים ל-`/volume1/docker/rustdesk:/root` (או לתיקייה האמיתית שלכם).
-   - **משתני הסביבה והדגלים שרשמתם בסעיף 1ב**: מוסיפים אותם ב-`environment` ובשורת `command` (בקובץ יש דוגמאות בהערות, למשל `command: hbbs -r your.host:21117`). משתמשים בערכים **שלכם**, לא בדוגמה.
+   - **משתני הסביבה והדגלים שרשמתם בסעיף 1ב**: מוסיפים אותם ב-`environment` ובשורת `command` לפי טבלת התרגום בסעיף 1ב (בקובץ יש דוגמאות בהערות, למשל `command: hbbs -r your.host:21117`). משתמשים בערכים **שלכם**, לא בדוגמה. אל תעתיקו את `RELAY` או `ENCRYPTED_ONLY` של s6 ל-`environment`: הם לא משפיעים, וצריך לתרגם אותם לדגלים.
+   - **הפורטים**: לפי מה שמצאתם בסעיף 1ג (אם היו פורטים לא רגילים, אפשרות א או ב).
 
 3. מפעילים:
 
 ```bash
 sudo docker compose -f docker-compose.console.yml up -d
+# בגרסאות DSM ישנות, אם הפקודה הקודמת נכשלת ב-"docker: 'compose' is not a docker command":
+# sudo docker-compose -f docker-compose.console.yml up -d
 sudo docker logs hbbs 2>&1 | head -50
 ```
+
+   חלופה בלי שורת פקודה לקובץ ה-compose: **Container Manager → Project → Create**, בוחרים תיקייה (למשל `/volume1/docker/rustdesk-console`), מעלים או מדביקים את תוכן `docker-compose.console.yml` הערוך, ומסיימים את האשף. ה-Project מפעיל את שני ה-containers.
 
    אפשר גם דרך הממשק: Container Manager → Container → Create על ה-image `rustdesk-server-console:latest`, הפקודה (`hbbs` עם הדגלים הישנים שלכם, ובנפרד `hbbr` ל-container השני), רשת **host**, Volume של התיקייה האמיתית ל-`/root`, ומשתנה סביבה `API_PORT=21114` יחד עם שאר המשתנים הישנים.
 
 4. בודקים: הממשק עולה על `http://<כתובת-ה-NAS>:21114`, ומכשירים מתחברים כרגיל.
+
+5. **משווים את לוג ההפעלה של החדשים לישנים.** ה-containers הישנים רק נעצרו, ולכן הלוג שלהם עדיין זמין. בהפעלה, hbbs כותב ללוג את רשימת שרתי ה-relay בשורה מהצורה `relay-servers=["your.host:21117"]` ואת המפתח הציבורי בשורה `Key: <מפתח>`. hbbr כותב `Key: <מפתח>` **רק** כשמצב מפתח מופעל (`-k _` או `KEY`); בלי זה אין לו שורת `Key:` בכלל.
+
+```bash
+sudo docker logs "${OLD_HBBS}-old" 2>&1 | grep -E 'relay-servers=|Key: |ALWAYS_USE_RELAY='
+sudo docker logs hbbs 2>&1 | grep -E 'relay-servers=|Key: |ALWAYS_USE_RELAY='
+# classic בלבד (ב-s6 שורת ה-Key של hbbr כבר מופיעה בלוג של ה-container היחיד):
+sudo docker logs "${OLD_HBBR}-old" 2>&1 | grep 'Key: '
+sudo docker logs hbbr 2>&1 | grep 'Key: '
+```
+
+   מה צריך לראות:
+   - שורת `relay-servers=[...]` של hbbs החדש זהה לישנה. אם בחדש מופיע `relay-servers=[]` ובישן הייתה כתובת, הדגל `-r` לא הועבר.
+   - ערך ה-`Key:` זהה בין הישן לחדש (אותו `id_ed25519.pub`).
+   - אם ב-container הישן הייתה ל-hbbr שורת `Key:` (כלומר `ENCRYPTED_ONLY=1` או `-k _`), גם ל-hbbr החדש חייבת להיות שורה כזו. אם היא חסרה, חסר `-k _` בפקודה של hbbr, וה-relay מקבל חיבורים בלי בדיקת מפתח.
+   - `ALWAYS_USE_RELAY=` זהה בשניהם.
+
+   אם `docker logs` לא מציג כלום, אותו לוג נמצא גם ב-Container Manager → ה-container → **Log** (מחפשים שם את אותן שורות). אם הלוג הישן כבר התגלגל ולא מכיל את שורות ההפעלה, משווים מול ההגדרות שרשמתם בסעיף 1ב.
 
 כשהכל עובד כמה ימים, אפשר למחוק את ה-containers הישנים (בשמות `...-old`). לא כדאי למחוק מהר את תיקיות הגיבוי.
 

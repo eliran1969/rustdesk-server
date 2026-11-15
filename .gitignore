@@ -13,3 +13,4 @@ test.*
 .idea
 console-ui/node_modules
 console-ui/dist
+__pycache__/

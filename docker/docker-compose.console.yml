@@ -1,3 +1,6 @@
+# Start: docker compose -f docker-compose.console.yml up -d
+#   (older DSM without the compose plugin: docker-compose -f docker-compose.console.yml up -d,
+#    or Container Manager -> Project -> Create with this file).
 # Build and tag the image first (from the repository root):
 #   docker buildx build -f docker/Dockerfile.console -t rustdesk-server-console:latest --load .
 # Multi-arch: docker buildx build --platform linux/amd64,linux/arm64 -f docker/Dockerfile.console -t rustdesk-server-console:latest .
@@ -10,11 +13,12 @@ services:
     # Carry over the command flags of your OLD hbbs container (see the guide, section 1), e.g.:
     # command: hbbs -r your.host:21117
     # command: hbbs -r your.host:21117 -k _
+    # The s6 image's RELAY / ENCRYPTED_ONLY variables are NOT read by hbbs/hbbr (only the
+    # s6 run scripts turn them into -r / -k _): write them as flags here, see the guide.
     environment:
       - API_PORT=21114
       # Carry over the OLD container's environment too (your own values), e.g.:
       # - RELAY_SERVERS=your.host
-      # - ENCRYPTED_ONLY=1
       # - ALWAYS_USE_RELAY=Y
       # - TRUST_PROXY=Y   # only if the console is reached exclusively via a reverse proxy
     volumes:
@@ -28,7 +32,9 @@ services:
     container_name: hbbr
     image: rustdesk-server-console:latest
     command: hbbr
-    # Carry over the old hbbr container's command/environment here if it had any.
+    # Carry over the old hbbr container's command/environment here if it had any, e.g.
+    # (old s6 ENCRYPTED_ONLY=1, or an old "hbbr -k _"):
+    # command: hbbr -k _
     volumes:
       - ./data:/root
     network_mode: host
