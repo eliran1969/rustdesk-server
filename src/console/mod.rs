@@ -1,3 +1,22 @@
+//! Web console. Release builds use `panic = 'abort'` (upstream Cargo.toml), so a panic
+//! anywhere in this module would kill hbbs: console code must be panic-free, which the
+//! lints below enforce. Tests may still unwrap.
+#![deny(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::indexing_slicing
+    )
+)]
+
 pub(crate) mod api;
 pub(crate) mod auth;
 pub(crate) mod db;

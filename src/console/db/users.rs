@@ -121,7 +121,11 @@ pub(crate) async fn update_password_hash(
 fn generate_password() -> String {
     let mut rng = OsRng;
     (0..GENERATED_PASSWORD_LEN)
-        .map(|_| PASSWORD_ALPHABET[rng.gen_range(0..PASSWORD_ALPHABET.len())] as char)
+        .filter_map(|_| {
+            PASSWORD_ALPHABET
+                .get(rng.gen_range(0..PASSWORD_ALPHABET.len()))
+                .map(|&b| b as char)
+        })
         .collect()
 }
 

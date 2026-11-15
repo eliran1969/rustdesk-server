@@ -154,7 +154,7 @@ fn client_ip_from(headers: &HeaderMap, connect: Option<SocketAddr>, trust_proxy:
         let forwarded = headers
             .get_all("x-forwarded-for")
             .iter()
-            .last()
+            .next_back()
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.rsplit(',').map(str::trim).find(|e| !e.is_empty()))
             .and_then(|e| e.parse::<IpAddr>().ok());

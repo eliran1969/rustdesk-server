@@ -148,7 +148,12 @@ pub(crate) async fn logout(
 
 pub(crate) async fn console_me(AuthUser(user, _): AuthUser) -> Json<Value> {
     let mut body = user_json(&user);
-    body["must_change_password"] = json!(user.must_change_password);
+    if let Some(obj) = body.as_object_mut() {
+        obj.insert(
+            "must_change_password".to_owned(),
+            json!(user.must_change_password),
+        );
+    }
     Json(body)
 }
 
