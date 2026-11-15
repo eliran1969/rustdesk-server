@@ -10,10 +10,15 @@ export function devicesQuery(
   pageSize: number,
   field: SearchField,
   term: string,
+  /** Extra filters sent as-is when non-empty (e.g. an exact `device_group_name`). */
+  extra: Record<string, string> = {},
 ): string {
   const params = new URLSearchParams({ current: String(page), pageSize: String(pageSize) })
   const trimmed = term.trim()
   if (trimmed) params.set(field, wrapPattern(trimmed))
+  for (const [k, v] of Object.entries(extra)) {
+    if (v) params.set(k, v)
+  }
   return `/api/devices?${params.toString()}`
 }
 

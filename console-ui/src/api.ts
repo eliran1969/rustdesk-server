@@ -44,6 +44,9 @@ export interface Device {
   is_online: boolean
   last_online: string | null
   user_name: string | null
+  /** The assigned user's group (empty when unassigned). */
+  group_name?: string | null
+  device_group_name?: string | null
   note: string | null
   info: DeviceInfo | null
 }
@@ -146,6 +149,7 @@ const EXACT_ERRORS: Record<string, string> = {
   'Cannot delete the default group': 'errors.defaultGroupDelete',
   'Cannot rename the default group': 'errors.defaultGroupRename',
   'Admin required!': 'errors.adminRequired',
+  'Disable the device first': 'errors.disableDeviceFirst',
 }
 
 /** Server error strings that end with a name → i18n key with `{{name}}`. */
@@ -153,6 +157,9 @@ const PREFIX_ERRORS: [string, string][] = [
   ['Unknown group or user: ', 'errors.unknownRuleTarget'],
   ['Unknown group: ', 'errors.unknownGroup'],
   ['Invalid rule type: ', 'errors.invalidRuleType'],
+  ['Unknown user: ', 'errors.unknownUser'],
+  ['Unknown device group: ', 'errors.unknownDeviceGroup'],
+  ['Unknown device: ', 'errors.unknownDevice'],
 ]
 
 /** Maps an API failure to a translated message; unknown server text is kept as `detail`. */
@@ -214,6 +221,9 @@ export interface DeviceGroup {
   guid: string
   name: string
   note?: string
+  created_at?: string | null
+  allowed_incomings?: Rule[]
+  device_count?: number
 }
 
 /** The built-in group every user/device falls back to (matched case-insensitively). */

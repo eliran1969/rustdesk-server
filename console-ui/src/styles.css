@@ -766,6 +766,100 @@ input[readonly] {
   overflow-wrap: anywhere;
 }
 
+/* ---------- Drawer (Modal variant) ---------- */
+
+.drawer-backdrop {
+  place-items: stretch end;
+  padding: 0;
+}
+
+.drawer {
+  max-inline-size: 440px;
+  max-block-size: none;
+  block-size: 100vh;
+  border-radius: 0;
+  border-block: 0;
+  border-inline-end: 0;
+}
+
+.drawer .modal-body {
+  flex: 1;
+}
+
+.field-static {
+  padding-block: 4px;
+}
+
+.input-with-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.input-with-action input {
+  flex: 1;
+  min-inline-size: 0;
+}
+
+/* ---------- Batch actions ---------- */
+
+.batch-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-block: 8px;
+  padding-inline: 12px;
+}
+
+.batch-count {
+  font-weight: 600;
+  margin-inline-end: 8px;
+}
+
+.notice-dismissible {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-block: 0;
+}
+
+.notice-success {
+  border-color: var(--success-bg);
+  background: var(--success-bg);
+  color: var(--success-fg);
+}
+
+.cell-check {
+  inline-size: 1%;
+}
+
+.member-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.member-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-block: 6px;
+  padding-inline: 12px;
+}
+
+.member-list li + li {
+  border-block-start: 1px solid var(--border);
+}
+
+.member-list li > .muted {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
 /* ---------- Narrow screens: sidebar becomes a top bar ---------- */
 
 @media (max-width: 768px) {

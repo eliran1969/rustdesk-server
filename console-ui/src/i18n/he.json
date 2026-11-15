@@ -65,7 +65,49 @@
       "user": "משתמש משויך",
       "online": "מקוון",
       "lastSeen": "נראה לאחרונה",
-      "note": "הערה"
+      "note": "הערה",
+      "select": "בחירה",
+      "userGroup": "קבוצת משתמש",
+      "deviceGroup": "קבוצת מכשירים"
+    },
+    "filterDeviceGroup": "סינון לפי קבוצת מכשירים",
+    "allDeviceGroups": "כל קבוצות המכשירים",
+    "selectAll": "בחירת כל המכשירים בעמוד",
+    "selectRow": "בחירת המכשיר {{id}}",
+    "selected": "נבחרו {{count}}",
+    "enable": "הפעלה",
+    "disable": "השבתה",
+    "deleteEnabledHint": "יש להשבית את המכשיר לפני המחיקה",
+    "noUser": "ללא משתמש (לא משויך)",
+    "noDeviceGroup": "ללא קבוצת מכשירים",
+    "confirmDeleteTitle": "מחיקת מכשיר",
+    "confirmDeleteMessage": "למחוק את המכשיר {{id}}? ההערה, השיוך והחברות בקבוצה יימחקו. אם המכשיר יתחבר שוב, הוא יופיע כמכשיר חדש. אי אפשר לבטל את הפעולה.",
+    "batch": {
+      "label": "פעולות על המכשירים שנבחרו",
+      "assignUser": "שיוך למשתמש",
+      "assignGroup": "קביעת קבוצת מכשירים",
+      "enable": "הפעלה",
+      "disable": "השבתה",
+      "clearSelection": "ניקוי הבחירה",
+      "assignUserTitle": "שיוך {{count}} מכשירים למשתמש",
+      "assignGroupTitle": "קביעת קבוצת מכשירים ל-{{count}} מכשירים",
+      "apply": "החלה",
+      "progress": "בביצוע… {{done}} מתוך {{total}}",
+      "summary": "הצליחו {{ok}} / נכשלו {{failed}}",
+      "failedIds": "מכשירים שנכשלו: {{ids}}"
+    },
+    "edit": {
+      "title": "עריכת מכשיר",
+      "id": "מזהה מכשיר",
+      "deviceName": "שם תצוגה",
+      "deviceNameHint": "השארת השדה ריק תציג את השם שהמכשיר מדווח.",
+      "osUser": "משתמש מערכת",
+      "osUserHint": "השארת השדה ריק תציג את המשתמש שהמכשיר מדווח.",
+      "reset": "איפוס",
+      "resetField": "איפוס {{field}} לערך המדווח",
+      "note": "הערה",
+      "user": "משתמש משויך",
+      "deviceGroup": "קבוצת מכשירים"
     }
   },
   "errors": {
@@ -88,7 +130,11 @@
     "unknownRuleTarget": "אין קבוצה או משתמש בשם \"{{name}}\".",
     "invalidRuleType": "סוג הכלל הזה לא מותר כאן.",
     "notFound": "הפריט כבר לא קיים. כדאי לרענן ולנסות שוב.",
-    "generic": "משהו השתבש. נסו שוב."
+    "generic": "משהו השתבש. נסו שוב.",
+    "disableDeviceFirst": "יש להשבית את המכשיר לפני המחיקה.",
+    "unknownUser": "אין משתמש בשם \"{{name}}\".",
+    "unknownDeviceGroup": "קבוצת המכשירים \"{{name}}\" לא קיימת.",
+    "unknownDevice": "אין מכשיר עם המזהה \"{{name}}\"."
   },
   "common": {
     "save": "שמירה",
@@ -185,7 +231,34 @@
   },
   "deviceGroups": {
     "title": "קבוצות מכשירים",
-    "comingSoon": "העמוד הזה יגיע בקרוב."
+    "new": "קבוצה חדשה",
+    "createTitle": "קבוצת מכשירים חדשה",
+    "editTitle": "עריכת קבוצת מכשירים",
+    "searchPlaceholder": "חיפוש לפי שם",
+    "empty": "לא נמצאו קבוצות מכשירים.",
+    "accessibleFromHint": "המשתמשים וקבוצות המשתמשים האלה יכולים להתחבר למכשירים בקבוצה.",
+    "fields": {
+      "name": "שם",
+      "note": "הערה",
+      "accessibleFrom": "נגישה מ"
+    },
+    "columns": {
+      "name": "שם",
+      "note": "הערה",
+      "devices": "מכשירים",
+      "accessibleFrom": "נגישה מ"
+    },
+    "manageDevices": "ניהול מכשירים",
+    "manageTitle": "המכשירים בקבוצה {{name}}",
+    "addIds": "הוספת מכשירים לפי ID",
+    "addIdsHint": "אפשר להפריד בין כמה מזהים בפסיקים או ברווחים. מכשיר שנמצא בקבוצה אחרת יעבור לקבוצה הזו.",
+    "add": "הוספה",
+    "removeDevice": "הסרת {{id}} מהקבוצה",
+    "noDevices": "אין עדיין מכשירים בקבוצה.",
+    "partialList": "מוצגים {{shown}} מתוך {{total}} מכשירים.",
+    "confirmDeleteTitle": "מחיקת קבוצת מכשירים",
+    "confirmDeleteMessage": "למחוק את קבוצת המכשירים \"{{name}}\"? אי אפשר לבטל את הפעולה.",
+    "confirmDeleteWithDevices": "למחוק את קבוצת המכשירים \"{{name}}\"? {{count}} המכשירים שבה יוסרו מהקבוצה, אבל המכשירים עצמם יישארו. אי אפשר לבטל את הפעולה."
   },
   "rules": {
     "type": "סוג",

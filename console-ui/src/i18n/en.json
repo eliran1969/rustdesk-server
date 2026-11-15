@@ -65,7 +65,49 @@
       "user": "Assigned user",
       "online": "Online",
       "lastSeen": "Last seen",
-      "note": "Note"
+      "note": "Note",
+      "select": "Select",
+      "userGroup": "User group",
+      "deviceGroup": "Device group"
+    },
+    "filterDeviceGroup": "Filter by device group",
+    "allDeviceGroups": "All device groups",
+    "selectAll": "Select all devices on this page",
+    "selectRow": "Select device {{id}}",
+    "selected": "{{count}} selected",
+    "enable": "Enable",
+    "disable": "Disable",
+    "deleteEnabledHint": "Disable the device before deleting it",
+    "noUser": "No user (unassigned)",
+    "noDeviceGroup": "No device group",
+    "confirmDeleteTitle": "Delete device",
+    "confirmDeleteMessage": "Delete device {{id}}? Its note, assignment and group membership will be lost. If the device connects again, it will appear as a new device. This cannot be undone.",
+    "batch": {
+      "label": "Actions for selected devices",
+      "assignUser": "Assign to user",
+      "assignGroup": "Set device group",
+      "enable": "Enable",
+      "disable": "Disable",
+      "clearSelection": "Clear selection",
+      "assignUserTitle": "Assign {{count}} devices to a user",
+      "assignGroupTitle": "Set the device group of {{count}} devices",
+      "apply": "Apply",
+      "progress": "Working… {{done}} of {{total}}",
+      "summary": "Succeeded {{ok}} / Failed {{failed}}",
+      "failedIds": "Failed devices: {{ids}}"
+    },
+    "edit": {
+      "title": "Edit device",
+      "id": "Device ID",
+      "deviceName": "Display name",
+      "deviceNameHint": "Leave empty to use the name the device reports.",
+      "osUser": "System user",
+      "osUserHint": "Leave empty to use the user the device reports.",
+      "reset": "Reset",
+      "resetField": "Reset {{field}} to the reported value",
+      "note": "Note",
+      "user": "Assigned user",
+      "deviceGroup": "Device group"
     }
   },
   "errors": {
@@ -88,7 +130,11 @@
     "unknownRuleTarget": "No group or user named \"{{name}}\".",
     "invalidRuleType": "This kind of rule is not allowed here.",
     "notFound": "The item no longer exists. Refresh and try again.",
-    "generic": "Something went wrong. Please try again."
+    "generic": "Something went wrong. Please try again.",
+    "disableDeviceFirst": "Disable the device before deleting it.",
+    "unknownUser": "No user named \"{{name}}\".",
+    "unknownDeviceGroup": "The device group \"{{name}}\" does not exist.",
+    "unknownDevice": "No device with ID \"{{name}}\"."
   },
   "common": {
     "save": "Save",
@@ -185,7 +231,34 @@
   },
   "deviceGroups": {
     "title": "Device groups",
-    "comingSoon": "This page is coming soon."
+    "new": "New group",
+    "createTitle": "New device group",
+    "editTitle": "Edit device group",
+    "searchPlaceholder": "Search by name",
+    "empty": "No device groups found.",
+    "accessibleFromHint": "These users and user groups may connect to devices in this group.",
+    "fields": {
+      "name": "Name",
+      "note": "Note",
+      "accessibleFrom": "Accessible from"
+    },
+    "columns": {
+      "name": "Name",
+      "note": "Note",
+      "devices": "Devices",
+      "accessibleFrom": "Accessible from"
+    },
+    "manageDevices": "Manage devices",
+    "manageTitle": "Devices in {{name}}",
+    "addIds": "Add devices by ID",
+    "addIdsHint": "Separate several IDs with commas or spaces. A device in another group moves to this one.",
+    "add": "Add",
+    "removeDevice": "Remove {{id}} from the group",
+    "noDevices": "No devices in this group yet.",
+    "partialList": "Showing {{shown}} of {{total}} devices.",
+    "confirmDeleteTitle": "Delete device group",
+    "confirmDeleteMessage": "Delete the device group \"{{name}}\"? This cannot be undone.",
+    "confirmDeleteWithDevices": "Delete the device group \"{{name}}\"? Its {{count}} devices will be removed from the group; the devices themselves are kept. This cannot be undone."
   },
   "rules": {
     "type": "Type",

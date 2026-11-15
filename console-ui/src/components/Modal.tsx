@@ -9,6 +9,8 @@ interface ModalProps {
   onClose: () => void
   children: ReactNode
   footer?: ReactNode
+  /** `drawer` slides in from the inline-end edge (left in RTL) at full height. */
+  variant?: 'dialog' | 'drawer'
 }
 
 const FOCUSABLE =
@@ -23,7 +25,7 @@ function focusables(root: HTMLElement): HTMLElement[] {
  * into the dialog on open, Tab cycles inside it, Esc closes, and focus returns to the
  * element that opened it.
  */
-export function Modal({ open, title, onClose, children, footer }: ModalProps) {
+export function Modal({ open, title, onClose, children, footer, variant = 'dialog' }: ModalProps) {
   const { t } = useTranslation()
   const titleId = useId()
   const ref = useRef(null as HTMLDivElement | null)
@@ -84,10 +86,10 @@ export function Modal({ open, title, onClose, children, footer }: ModalProps) {
   if (!open) return null
 
   return (
-    <div className="modal-backdrop">
+    <div className={variant === 'drawer' ? 'modal-backdrop drawer-backdrop' : 'modal-backdrop'}>
       <div
         ref={ref}
-        className="modal card"
+        className={variant === 'drawer' ? 'modal drawer card' : 'modal card'}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
