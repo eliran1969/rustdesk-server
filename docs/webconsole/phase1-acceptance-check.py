@@ -133,6 +133,17 @@ def run():
         st, body = http("POST", "/api/login", login_body)
         tok = body.get("access_token") if isinstance(body, dict) else None
         check("POST /api/login admin", "200 + access_token", "%s %s" % (st, "token" if tok else body), st == 200 and tok)
+        # the server forces a password change after the first login (403 on most routes until then)
+        st, me = http("GET", "/api/console/me", token=tok)
+        check("/api/console/me fresh admin", "must_change_password=true", me.get("must_change_password") if isinstance(me, dict) else me,
+              isinstance(me, dict) and me.get("must_change_password") is True)
+        newpw = "Accept-Test-New-Pw-1"
+        st, body = http("POST", "/api/console/change-password", {"old_password": pw, "new_password": newpw}, token=tok)
+        check("POST /api/console/change-password", "200", "%s %s" % (st, body), st == 200)
+        login_body = dict(login_body, password=newpw)
+        st, body = http("POST", "/api/login", login_body)
+        tok = body.get("access_token") if isinstance(body, dict) else None
+        check("login again with the new password", "200 + access_token", "%s %s" % (st, "token" if tok else body), st == 200 and tok)
         st, body = http("GET", "/api/devices", token=tok)
         dev = (body.get("data") or [{}])[0] if isinstance(body, dict) else {}
         check("GET /api/devices shows device + assigned user",
@@ -162,13 +173,7 @@ def run():
         dev = (body.get("data") or [{}])[0] if isinstance(body, dict) else {}
         check("device stays assigned after logout", "user_name=admin", dev.get("user_name"), dev.get("user_name") == "admin")
 
-        st, me = http("GET", "/api/console/me", token=tok2)
-        check("/api/console/me fresh admin", "must_change_password=true", me.get("must_change_password") if isinstance(me, dict) else me,
-              isinstance(me, dict) and me.get("must_change_password") is True)
-        newpw = "Accept-Test-New-Pw-1"
-        st, body = http("POST", "/api/console/change-password", {"old_password": pw, "new_password": newpw}, token=tok2)
-        check("POST /api/console/change-password", "200", "%s %s" % (st, body), st == 200)
-        st, tk3 = http("POST", "/api/login", dict(login_body, password=newpw))
+        st, tk3 = http("POST", "/api/login", login_body)
         tok3 = tk3.get("access_token") if isinstance(tk3, dict) else None
         st, me = http("GET", "/api/console/me", token=tok3)
         check("must_change_password after change", "false (login with new password works)",
