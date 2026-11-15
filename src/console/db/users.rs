@@ -153,6 +153,31 @@ fn generate_password() -> String {
         .collect()
 }
 
+/// Creates a console user in the given group (the `Default` group when `None`).
+/// Returns the new guid.
+pub(crate) async fn create_user(
+    pool: &SqlitePool,
+    name: &str,
+    password_hash: &str,
+    is_admin: bool,
+    group_guid: Option<&[u8]>,
+) -> Result<Vec<u8>, sqlx::Error> {
+    let guid = uuid::Uuid::new_v4().as_bytes().to_vec();
+    sqlx::query(
+        "insert into console_user(guid, name, password_hash, is_admin, group_guid)
+         values(?1, ?2, ?3, ?4,
+                coalesce(?5, (select guid from console_user_group where name = 'Default')))",
+    )
+    .bind(&guid)
+    .bind(name)
+    .bind(password_hash)
+    .bind(is_admin)
+    .bind(group_guid)
+    .execute(pool)
+    .await?;
+    Ok(guid)
+}
+
 /// Creates the `admin` user when no console user exists. Returns the generated password.
 pub(crate) async fn ensure_initial_admin(pool: &SqlitePool) -> ResultType<Option<String>> {
     let password = generate_password();
@@ -160,8 +185,9 @@ pub(crate) async fn ensure_initial_admin(pool: &SqlitePool) -> ResultType<Option
     let guid = uuid::Uuid::new_v4().as_bytes().to_vec();
     // One statement, so concurrent starters cannot both create an admin.
     let res = sqlx::query(
-        "insert into console_user(guid, name, password_hash, is_admin, status, must_change_password)
-         select ?, 'admin', ?, 1, 1, 1 where not exists (select 1 from console_user)",
+        "insert into console_user(guid, name, password_hash, is_admin, status, must_change_password, group_guid)
+         select ?, 'admin', ?, 1, 1, 1, (select guid from console_user_group where name = 'Default')
+         where not exists (select 1 from console_user)",
     )
     .bind(guid)
     .bind(hash)

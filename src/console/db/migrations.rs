@@ -1,7 +1,7 @@
 use hbb_common::{anyhow::anyhow, log, ResultType};
 use sqlx::SqlitePool;
 
-const TARGET_VERSION: i64 = 1;
+const TARGET_VERSION: i64 = 2;
 
 const SCHEMA_V1: &str = "
 create table if not exists console_meta (
@@ -76,7 +76,88 @@ async fn backup(pool: &SqlitePool, db_path: &str) -> ResultType<()> {
     Ok(())
 }
 
-/// Applies additive console migrations, backing up the database file first
+const SCHEMA_V2: &str = "
+create table if not exists console_user_group (
+  guid blob primary key not null,
+  name varchar(100) not null unique collate nocase,
+  note varchar(300) not null default '',
+  created_at datetime not null default(current_timestamp)
+);
+create table if not exists console_device_group (
+  guid blob primary key not null,
+  name varchar(100) not null unique collate nocase,
+  note varchar(300) not null default '',
+  created_at datetime not null default(current_timestamp)
+);
+create table if not exists console_access_rule (
+  owner_kind varchar(12) not null,
+  owner_guid blob not null,
+  direction varchar(3) not null,
+  target_type tinyint not null,
+  target_guid blob not null,
+  primary key (owner_kind, owner_guid, direction, target_type, target_guid)
+);
+create table if not exists console_peer_ext (
+  peer_guid blob primary key not null,
+  device_group_guid blob,
+  device_name varchar(200),
+  device_username varchar(200)
+);
+";
+
+pub(crate) const DEFAULT_GROUP_NAME: &str = "Default";
+
+async fn apply_v1(pool: &SqlitePool) -> ResultType<()> {
+    let mut tx = pool.begin().await?;
+    sqlx::query(SCHEMA_V1).execute(&mut tx).await?;
+    set_version(&mut tx, 1).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+async fn apply_v2(pool: &SqlitePool) -> ResultType<()> {
+    let mut tx = pool.begin().await?;
+    sqlx::query(SCHEMA_V2).execute(&mut tx).await?;
+    let cols: Vec<(String,)> = sqlx::query_as("select name from pragma_table_info('console_user')")
+        .fetch_all(&mut tx)
+        .await?;
+    if !cols.iter().any(|c| c.0 == "group_guid") {
+        sqlx::query("alter table console_user add column group_guid blob")
+            .execute(&mut tx)
+            .await?;
+    }
+    sqlx::query(
+        "insert into console_user_group(guid, name) select ?, ?
+         where not exists (select 1 from console_user_group where name = ?)",
+    )
+    .bind(uuid::Uuid::new_v4().as_bytes().to_vec())
+    .bind(DEFAULT_GROUP_NAME)
+    .bind(DEFAULT_GROUP_NAME)
+    .execute(&mut tx)
+    .await?;
+    sqlx::query(
+        "update console_user set group_guid =
+           (select guid from console_user_group where name = ?)
+         where group_guid is null",
+    )
+    .bind(DEFAULT_GROUP_NAME)
+    .execute(&mut tx)
+    .await?;
+    set_version(&mut tx, 2).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+async fn set_version(tx: &mut sqlx::SqliteConnection, v: i64) -> ResultType<()> {
+    sqlx::query("insert or replace into console_meta(key, value) values('schema_version', ?)")
+        .bind(v.to_string())
+        .execute(tx)
+        .await?;
+    Ok(())
+}
+
+/// Applies additive console migrations step by step (each in its own
+/// transaction), backing up the database file once before the first step
 /// whenever the schema version is about to be raised.
 pub(crate) async fn migrate(pool: &SqlitePool, db_path: &str) -> ResultType<()> {
     let version = current_version(pool).await?;
@@ -84,13 +165,10 @@ pub(crate) async fn migrate(pool: &SqlitePool, db_path: &str) -> ResultType<()> 
         return Ok(());
     }
     backup(pool, db_path).await?;
-    let mut tx = pool.begin().await?;
-    sqlx::query(SCHEMA_V1).execute(&mut tx).await?;
-    sqlx::query("insert or replace into console_meta(key, value) values('schema_version', ?)")
-        .bind(TARGET_VERSION.to_string())
-        .execute(&mut tx)
-        .await?;
-    tx.commit().await?;
+    if version < 1 {
+        apply_v1(pool).await?;
+    }
+    apply_v2(pool).await?;
     log::info!("console: schema migrated to version {}", TARGET_VERSION);
     Ok(())
 }
@@ -148,7 +226,7 @@ mod tests {
                 .await
                 .unwrap();
         }
-        assert_eq!(version(&pool).await, "1");
+        assert_eq!(version(&pool).await, "2");
         assert_eq!(baks(dir.path()), 1);
     }
 
@@ -166,7 +244,7 @@ mod tests {
         migrate(&pool, &p).await.unwrap();
         migrate(&pool, &p).await.unwrap();
         assert_eq!(baks(dir.path()), 1);
-        assert_eq!(version(&pool).await, "1");
+        assert_eq!(version(&pool).await, "2");
     }
 
     #[tokio::test]
@@ -176,6 +254,66 @@ mod tests {
         let p = path.to_string_lossy().to_string();
         let pool = open_pool(&p).await.unwrap();
         migrate(&pool, &p).await.unwrap();
-        assert_eq!(version(&pool).await, "1");
+        assert_eq!(version(&pool).await, "2");
+    }
+
+    async fn v1_db(dir: &std::path::Path) -> (SqlitePool, String) {
+        let path = dir.join("v1.sqlite3");
+        let p = path.to_string_lossy().to_string();
+        let pool = open_pool(&p).await.unwrap();
+        sqlx::query(SCHEMA_V1).execute(&pool).await.unwrap();
+        sqlx::query("insert into console_meta(key,value) values('schema_version','1')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        for n in ["alice", "bob"] {
+            sqlx::query("insert into console_user(guid,name,password_hash) values(?,?,'x')")
+                .bind(uuid::Uuid::new_v4().as_bytes().to_vec())
+                .bind(n)
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+        (pool, p)
+    }
+
+    #[tokio::test]
+    async fn migrate_v2_from_v1_keeps_users_and_assigns_default_group() {
+        let dir = tempfile::tempdir().unwrap();
+        let (pool, p) = v1_db(dir.path()).await;
+        migrate(&pool, &p).await.unwrap();
+        assert_eq!(version(&pool).await, "2");
+        assert_eq!(baks(dir.path()), 1);
+        let rows: Vec<(String, String)> = sqlx::query_as(
+            "select u.name, g.name from console_user u
+             join console_user_group g on g.guid = u.group_guid order by u.name",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            rows,
+            vec![
+                ("alice".to_string(), "Default".to_string()),
+                ("bob".to_string(), "Default".to_string())
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn migrate_v2_idempotent() {
+        let dir = tempfile::tempdir().unwrap();
+        let (pool, p) = v1_db(dir.path()).await;
+        migrate(&pool, &p).await.unwrap();
+        migrate(&pool, &p).await.unwrap();
+        // Re-running the v2 step directly (e.g. after a crash) must be harmless too.
+        apply_v2(&pool).await.unwrap();
+        assert_eq!(baks(dir.path()), 1);
+        assert_eq!(version(&pool).await, "2");
+        let n: (i64,) = sqlx::query_as("select count(*) from console_user_group")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(n.0, 1);
     }
 }

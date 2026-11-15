@@ -66,7 +66,8 @@ pub(crate) async fn insert_user(
     let guid = uuid::Uuid::new_v4().as_bytes().to_vec();
     let hash = super::db::users::hash_password(password).unwrap();
     sqlx::query(
-        "insert into console_user(guid, name, password_hash, is_admin) values(?, ?, ?, ?)",
+        "insert into console_user(guid, name, password_hash, is_admin, group_guid)
+         values(?, ?, ?, ?, (select guid from console_user_group where name = 'Default'))",
     )
     .bind(&guid)
     .bind(name)
