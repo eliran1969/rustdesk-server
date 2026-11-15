@@ -43,12 +43,17 @@ function GroupFormModal({ group, onClose, onSaved }: GroupFormProps) {
     }
     setBusy(true)
     setError(null)
-    const body: Record<string, unknown> = {
-      note,
-      allowed_incomings: incoming,
-      allowed_outgoings: outgoing,
+    // Only changed fields on edit; the default group's name is never sent.
+    const body: Record<string, unknown> = {}
+    const same = (a: Rule[], b: Rule[]) => JSON.stringify(a) === JSON.stringify(b)
+    if (!group || note !== group.note) body.note = note
+    if (!group || !same(incoming, group.allowed_incomings ?? [])) body.allowed_incomings = incoming
+    if (!group || !same(outgoing, group.allowed_outgoings ?? [])) body.allowed_outgoings = outgoing
+    if (!isDefault && (!group || name.trim() !== group.name)) body.name = name.trim()
+    if (group && Object.keys(body).length === 0) {
+      onSaved()
+      return
     }
-    if (!isDefault) body.name = name.trim()
     try {
       if (group) {
         await apiFetch(`/api/user-groups/${group.guid}`, {
@@ -128,6 +133,8 @@ export function UserGroupsPage() {
   const [total, setTotal] = useState(0)
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState(null as ErrorInfo | null)
+  /** Failure of the last delete; list reloads never clear it. */
+  const [actionError, setActionError] = useState(null as ErrorInfo | null)
   const [editing, setEditing] = useState(null as Editing | null)
   const [deleting, setDeleting] = useState(null as UserGroup | null)
   const [reloadTick, setReloadTick] = useState(0)
@@ -184,6 +191,16 @@ export function UserGroupsPage() {
     setQuery('')
   }
 
+  function startEdit(next: Editing) {
+    setActionError(null)
+    setEditing(next)
+  }
+
+  function startDelete(group: UserGroup) {
+    setActionError(null)
+    setDeleting(group)
+  }
+
   function onSaved() {
     setEditing(null)
     reload()
@@ -191,11 +208,11 @@ export function UserGroupsPage() {
 
   async function confirmDelete() {
     if (!deleting) return
+    setActionError(null)
     try {
       await apiFetch(`/api/user-groups/${deleting.guid}`, { method: 'DELETE' })
-      setError(null)
     } catch (err) {
-      setError(describeError(err))
+      setActionError(describeError(err))
     }
     setDeleting(null)
     reload()
@@ -205,7 +222,7 @@ export function UserGroupsPage() {
     <section className="page">
       <div className="page-head">
         <h1>{t('userGroups.title')}</h1>
-        <button type="button" className="btn btn-primary" onClick={() => setEditing({})}>
+        <button type="button" className="btn btn-primary" onClick={() => startEdit({})}>
           <PlusIcon />
           <span>{t('userGroups.new')}</span>
         </button>
@@ -229,6 +246,7 @@ export function UserGroupsPage() {
         )}
       </form>
 
+      <ErrorAlert error={actionError} onDismiss={() => setActionError(null)} />
       <ErrorAlert error={error} />
 
       <div className="card table-card">
@@ -268,7 +286,7 @@ export function UserGroupsPage() {
                         <button
                           type="button"
                           className="btn btn-ghost btn-sm"
-                          onClick={() => setEditing({ group: g })}
+                          onClick={() => startEdit({ group: g })}
                         >
                           {t('common.edit')}
                         </button>
@@ -276,7 +294,7 @@ export function UserGroupsPage() {
                           <button
                             type="button"
                             className="btn btn-danger-ghost btn-sm"
-                            onClick={() => setDeleting(g)}
+                            onClick={() => startDelete(g)}
                           >
                             {t('common.delete')}
                           </button>

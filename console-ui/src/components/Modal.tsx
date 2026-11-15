@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef } from 'react'
-import type { KeyboardEvent, ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CloseIcon } from './Icons'
 
@@ -28,6 +28,11 @@ export function Modal({ open, title, onClose, children, footer }: ModalProps) {
   const titleId = useId()
   const ref = useRef(null as HTMLDivElement | null)
 
+  const onCloseRef = useRef(onClose)
+  useEffect(() => {
+    onCloseRef.current = onClose
+  }, [onClose])
+
   useEffect(() => {
     if (!open) return
     const opener = document.activeElement as HTMLElement | null
@@ -37,35 +42,46 @@ export function Modal({ open, title, onClose, children, footer }: ModalProps) {
       const first = (body && focusables(body)[0]) || focusables(root)[0]
       ;(first ?? root).focus()
     }
+    // On `document`, so Esc and the Tab trap still work when focus left the dialog
+    // (e.g. after a click on the backdrop).
+    function onKeyDown(e: KeyboardEvent) {
+      const dialog = ref.current
+      if (!dialog) return
+      if (e.key === 'Escape') {
+        e.stopPropagation()
+        onCloseRef.current()
+        return
+      }
+      if (e.key !== 'Tab') return
+      const items = focusables(dialog)
+      if (items.length === 0) {
+        e.preventDefault()
+        dialog.focus()
+        return
+      }
+      const first = items[0]
+      const last = items[items.length - 1]
+      const active = document.activeElement
+      const inside = active instanceof Node && dialog.contains(active)
+      if (!inside) {
+        e.preventDefault()
+        ;(e.shiftKey ? last : first).focus()
+      } else if (e.shiftKey && (active === first || active === dialog)) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault()
+        first.focus()
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
     return () => {
+      document.removeEventListener('keydown', onKeyDown)
       if (opener && typeof opener.focus === 'function' && opener.isConnected) opener.focus()
     }
   }, [open])
 
   if (!open) return null
-
-  function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
-    if (e.key === 'Escape') {
-      e.stopPropagation()
-      onClose()
-      return
-    }
-    if (e.key !== 'Tab' || !ref.current) return
-    const items = focusables(ref.current)
-    if (items.length === 0) {
-      e.preventDefault()
-      return
-    }
-    const first = items[0]
-    const last = items[items.length - 1]
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault()
-      last.focus()
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault()
-      first.focus()
-    }
-  }
 
   return (
     <div className="modal-backdrop">
@@ -76,7 +92,6 @@ export function Modal({ open, title, onClose, children, footer }: ModalProps) {
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        onKeyDown={onKeyDown}
       >
         <div className="modal-head">
           <h2 id={titleId}>{title}</h2>

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { setLanguage } from '../i18n'
 import en from '../i18n/en.json'
@@ -9,6 +9,23 @@ function rowOf(text: string): HTMLElement {
   const row = screen.getByText(text).closest('tr')
   expect(row).not.toBeNull()
   return row as HTMLElement
+}
+
+async function settle() {
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, 30))
+  })
+}
+
+async function saveEdit(fetchMock: ReturnType<typeof setupOrg>, user: string) {
+  fireEvent.click(within(rowOf(user)).getByRole('button', { name: en.common.edit }))
+  return within(await screen.findByRole('dialog', { name: en.users.editTitle }))
+}
+
+function patchBody(fetchMock: ReturnType<typeof setupOrg>, guid: string) {
+  const calls = callsTo(fetchMock, `/api/users/${guid}`, 'PATCH')
+  expect(calls).toHaveLength(1)
+  return JSON.parse(String(calls[0][1]?.body))
 }
 
 describe('UsersPage', () => {
@@ -79,5 +96,53 @@ describe('UsersPage', () => {
     expect(activeDelete).toHaveAttribute('title', en.users.deleteActiveHint)
     const disabledDelete = within(rowOf('bob')).getByRole('button', { name: en.common.delete })
     expect(disabledDelete).toBeEnabled()
+  })
+
+  it('failed delete keeps the translated error after the list reloads', async () => {
+    const fetchMock = setupOrg(ADMIN, (path, method) =>
+      path === '/api/users/b2' && method === 'DELETE'
+        ? { status: 400, body: { error: 'Disable the user first' } }
+        : undefined,
+    )
+    renderApp('/users')
+    await screen.findByText('bob')
+    const listsBefore = callsTo(fetchMock, '/api/users').length
+    fireEvent.click(within(rowOf('bob')).getByRole('button', { name: en.common.delete }))
+    const dialog = await screen.findByRole('dialog', { name: en.users.confirm.deleteTitle })
+    fireEvent.click(within(dialog).getByRole('button', { name: en.common.delete }))
+
+    await waitFor(() =>
+      expect(callsTo(fetchMock, '/api/users').length).toBeGreaterThan(listsBefore),
+    )
+    await settle()
+    expect(screen.getByRole('alert')).toHaveTextContent(en.errors.disableFirst)
+    expect(screen.getByText('bob')).toBeInTheDocument()
+  })
+
+  it('edit that changes only the note sends only note', async () => {
+    const fetchMock = setupOrg()
+    renderApp('/users')
+    await screen.findByText('alice')
+    const d = await saveEdit(fetchMock, 'alice')
+    fireEvent.change(d.getByLabelText(en.users.fields.note), { target: { value: 'on leave' } })
+    fireEvent.click(d.getByRole('button', { name: en.common.save }))
+    await waitFor(() => expect(callsTo(fetchMock, '/api/users/a1', 'PATCH')).toHaveLength(1))
+    expect(patchBody(fetchMock, 'a1')).toEqual({ note: 'on leave' })
+  })
+
+  it('self edit omits is_admin', async () => {
+    const fetchMock = setupOrg({ ...ADMIN, name: 'alice' })
+    renderApp('/users')
+    await screen.findByText('bob')
+    const d = await saveEdit(fetchMock, 'alice')
+    expect(d.getByLabelText(en.users.fields.isAdmin)).toBeDisabled()
+    fireEvent.change(d.getByLabelText(en.users.fields.displayName), {
+      target: { value: 'Alice B' },
+    })
+    fireEvent.click(d.getByRole('button', { name: en.common.save }))
+    await waitFor(() => expect(callsTo(fetchMock, '/api/users/a1', 'PATCH')).toHaveLength(1))
+    const body = patchBody(fetchMock, 'a1')
+    expect(body).toEqual({ display_name: 'Alice B' })
+    expect(body).not.toHaveProperty('is_admin')
   })
 })

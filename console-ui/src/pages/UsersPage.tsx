@@ -60,9 +60,8 @@ function UserFormModal({ user, groups, isSelf, onClose, onSaved }: UserFormProps
   const [name, setName] = useState(user?.name ?? '')
   const [displayName, setDisplayName] = useState(user?.display_name ?? '')
   const [password, setPassword] = useState('')
-  const [group, setGroup] = useState(
-    user && !isDefaultGroup(user.group_name) ? (user.group_name ?? '') : '',
-  )
+  const initialGroup = user && !isDefaultGroup(user.group_name) ? (user.group_name ?? '') : ''
+  const [group, setGroup] = useState(initialGroup)
   const [email, setEmail] = useState(user?.email ?? '')
   const [note, setNote] = useState(user?.note ?? '')
   const [isAdmin, setIsAdmin] = useState(user?.is_admin ?? false)
@@ -85,15 +84,21 @@ function UserFormModal({ user, groups, isSelf, onClose, onSaved }: UserFormProps
     setError(null)
     try {
       if (user) {
-        const body: Record<string, unknown> = {
-          display_name: displayName,
-          email,
-          note,
-          group_name: group,
-          is_admin: isAdmin,
-        }
+        // Only changed fields; `group_name: ""` means Default on the server. Never send
+        // `is_admin` for the signed-in user's own account.
+        const body: Record<string, unknown> = {}
+        if (displayName !== user.display_name) body.display_name = displayName
+        if (email !== user.email) body.email = email
+        if (note !== user.note) body.note = note
+        if (group !== initialGroup) body.group_name = group
+        if (!isSelf && isAdmin !== user.is_admin) body.is_admin = isAdmin
         if (password) body.password = password
-        await apiFetch(`/api/users/${user.guid}`, { method: 'PATCH', body: JSON.stringify(body) })
+        if (Object.keys(body).length > 0) {
+          await apiFetch(`/api/users/${user.guid}`, {
+            method: 'PATCH',
+            body: JSON.stringify(body),
+          })
+        }
       } else {
         await apiFetch('/api/users', {
           method: 'POST',
@@ -211,6 +216,8 @@ export function UsersPage() {
   const [total, setTotal] = useState(0)
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState(null as ErrorInfo | null)
+  /** Failure of the last row action; list reloads never clear it. */
+  const [actionError, setActionError] = useState(null as ErrorInfo | null)
   const [editing, setEditing] = useState(null as Editing | null)
   const [pending, setPending] = useState(null as Pending | null)
   const [reloadTick, setReloadTick] = useState(0)
@@ -274,6 +281,16 @@ export function UsersPage() {
     setQuery({ term: '', group: '' })
   }
 
+  function startEdit(next: Editing) {
+    setActionError(null)
+    setEditing(next)
+  }
+
+  function startAction(next: Pending) {
+    setActionError(null)
+    setPending(next)
+  }
+
   function onSaved() {
     setEditing(null)
     reload()
@@ -282,6 +299,7 @@ export function UsersPage() {
   async function runPending() {
     if (!pending) return
     const { kind, user } = pending
+    setActionError(null)
     try {
       if (kind === 'enable' || kind === 'disable') {
         await apiFetch(`/api/users/${user.guid}/${kind}`, { method: 'POST' })
@@ -293,9 +311,8 @@ export function UsersPage() {
       } else {
         await apiFetch(`/api/users/${user.guid}`, { method: 'DELETE' })
       }
-      setError(null)
     } catch (err) {
-      setError(describeError(err))
+      setActionError(describeError(err))
     }
     setPending(null)
     reload()
@@ -329,7 +346,7 @@ export function UsersPage() {
     <section className="page">
       <div className="page-head">
         <h1>{t('users.title')}</h1>
-        <button type="button" className="btn btn-primary" onClick={() => setEditing({})}>
+        <button type="button" className="btn btn-primary" onClick={() => startEdit({})}>
           <PlusIcon />
           <span>{t('users.new')}</span>
         </button>
@@ -365,6 +382,7 @@ export function UsersPage() {
         )}
       </form>
 
+      <ErrorAlert error={actionError} onDismiss={() => setActionError(null)} />
       <ErrorAlert error={error} />
 
       <div className="card table-card">
@@ -410,14 +428,14 @@ export function UsersPage() {
                         <button
                           type="button"
                           className="btn btn-ghost btn-sm"
-                          onClick={() => setEditing({ user: u })}
+                          onClick={() => startEdit({ user: u })}
                         >
                           {t('common.edit')}
                         </button>
                         <button
                           type="button"
                           className="btn btn-ghost btn-sm"
-                          onClick={() => setPending({ kind: active ? 'disable' : 'enable', user: u })}
+                          onClick={() => startAction({ kind: active ? 'disable' : 'enable', user: u })}
                           disabled={isSelf && active}
                           title={isSelf && active ? t('users.selfHint') : undefined}
                         >
@@ -426,14 +444,14 @@ export function UsersPage() {
                         <button
                           type="button"
                           className="btn btn-ghost btn-sm"
-                          onClick={() => setPending({ kind: 'logout', user: u })}
+                          onClick={() => startAction({ kind: 'logout', user: u })}
                         >
                           {t('users.forceLogout')}
                         </button>
                         <button
                           type="button"
                           className="btn btn-danger-ghost btn-sm"
-                          onClick={() => setPending({ kind: 'delete', user: u })}
+                          onClick={() => startAction({ kind: 'delete', user: u })}
                           disabled={active}
                           title={active ? t('users.deleteActiveHint') : undefined}
                         >

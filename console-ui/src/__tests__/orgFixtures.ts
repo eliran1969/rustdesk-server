@@ -48,15 +48,17 @@ export const GROUPS = [
 
 export const DEVICE_GROUPS = [{ guid: 'd1', name: 'Servers', note: '' }]
 
-/** A fake console backend for the organization pages. */
-export function setupOrg(me: Record<string, unknown> = ADMIN) {
+export type Mutation = (path: string, method: string) => { status: number; body: unknown } | undefined
+
+/** A fake console backend for the organization pages; `mutate` may answer non-GET calls. */
+export function setupOrg(me: Record<string, unknown> = ADMIN, mutate?: Mutation) {
   return mockFetch((url, init) => {
     const u = new URL(url, 'http://localhost')
     const method = init?.method ?? 'GET'
     if (u.pathname === '/api/console/me') {
       return { status: 200, body: { ...me, must_change_password: false } }
     }
-    if (method !== 'GET') return { status: 200, body: {} }
+    if (method !== 'GET') return mutate?.(u.pathname, method) ?? { status: 200, body: {} }
     if (u.pathname === '/api/users') {
       return { status: 200, body: { total: USERS.length, data: USERS } }
     }
