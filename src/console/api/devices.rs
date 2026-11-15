@@ -16,7 +16,7 @@ const FROM: &str = "from peer \
     left join console_peer_sysinfo s on s.peer_guid = peer.guid \
     left join console_user u on u.guid = peer.user";
 
-fn parse_page(params: &HashMap<String, String>) -> (i64, i64) {
+pub(crate) fn parse_page(params: &HashMap<String, String>) -> (i64, i64) {
     let num = |k: &str, default: i64| {
         params
             .get(k)

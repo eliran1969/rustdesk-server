@@ -1,3 +1,4 @@
+pub(crate) mod access;
 pub(crate) mod devices;
 pub(crate) mod groups;
 pub(crate) mod migrations;

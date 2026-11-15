@@ -6,7 +6,9 @@ use hbb_common::{
     rand::{rngs::OsRng, Rng},
     ResultType,
 };
-use sqlx::{sqlite::SqliteRow, Row, SqlitePool};
+use sqlx::{sqlite::SqliteRow, Row, SqliteConnection, SqlitePool};
+
+use super::sessions;
 
 const BCRYPT_COST: u32 = 12;
 pub(crate) const MIN_PASSWORD_LEN: usize = 8;
@@ -162,20 +164,326 @@ pub(crate) async fn create_user(
     is_admin: bool,
     group_guid: Option<&[u8]>,
 ) -> Result<Vec<u8>, sqlx::Error> {
+    insert_user(
+        pool,
+        &NewUser {
+            name,
+            password_hash,
+            is_admin,
+            group_guid,
+            email: "",
+            note: "",
+        },
+    )
+    .await
+}
+
+/// A user to create; `group_guid == None` means the `Default` group.
+pub(crate) struct NewUser<'a> {
+    pub name: &'a str,
+    pub password_hash: &'a str,
+    pub is_admin: bool,
+    pub group_guid: Option<&'a [u8]>,
+    pub email: &'a str,
+    pub note: &'a str,
+}
+
+async fn insert_user(pool: &SqlitePool, u: &NewUser<'_>) -> Result<Vec<u8>, sqlx::Error> {
     let guid = uuid::Uuid::new_v4().as_bytes().to_vec();
     sqlx::query(
-        "insert into console_user(guid, name, password_hash, is_admin, group_guid)
+        "insert into console_user(guid, name, password_hash, is_admin, group_guid, email, note)
          values(?1, ?2, ?3, ?4,
-                coalesce(?5, (select guid from console_user_group where name = 'Default')))",
+                coalesce(?5, (select guid from console_user_group where name = 'Default')),
+                ?6, ?7)",
     )
     .bind(&guid)
-    .bind(name)
-    .bind(password_hash)
-    .bind(is_admin)
-    .bind(group_guid)
+    .bind(u.name)
+    .bind(u.password_hash)
+    .bind(u.is_admin)
+    .bind(u.group_guid)
+    .bind(u.email)
+    .bind(u.note)
     .execute(pool)
     .await?;
     Ok(guid)
+}
+
+/// Like `create_user`, with profile fields; a taken name (case-insensitive) is
+/// reported as `UserWriteError::Duplicate`.
+pub(crate) async fn create_user_with_profile(
+    pool: &SqlitePool,
+    u: &NewUser<'_>,
+) -> Result<Vec<u8>, UserWriteError> {
+    insert_user(pool, u).await.map_err(|e| {
+        if is_unique_violation(&e) {
+            UserWriteError::Duplicate
+        } else {
+            UserWriteError::Db(e)
+        }
+    })
+}
+
+#[derive(Debug)]
+pub(crate) enum UserWriteError {
+    Duplicate,
+    NotFound,
+    /// The change would leave no enabled administrator.
+    LastAdmin,
+    /// Only disabled users may be deleted.
+    NotDisabled,
+    Db(sqlx::Error),
+}
+
+impl From<sqlx::Error> for UserWriteError {
+    fn from(e: sqlx::Error) -> Self {
+        UserWriteError::Db(e)
+    }
+}
+
+fn is_unique_violation(e: &sqlx::Error) -> bool {
+    match e {
+        sqlx::Error::Database(d) => d.message().contains("UNIQUE constraint failed"),
+        _ => false,
+    }
+}
+
+/// Row-level guard for updates that take admin power away from `?1`: the update
+/// matches only if that row is not an enabled admin, or another enabled admin exists.
+/// It is part of the same statement, so it cannot race with a concurrent change.
+const KEEPS_AN_ADMIN: &str = "(is_admin = 0 or status != 1 or exists(
+    select 1 from console_user o where o.guid != ?1 and o.is_admin = 1 and o.status = 1))";
+
+/// One row of the user list.
+#[derive(Debug, Clone)]
+pub(crate) struct UserListItem {
+    pub user: User,
+    /// Empty when the user has no (existing) group.
+    pub group_name: String,
+    /// `YYYY-MM-DDTHH:MM:SS`.
+    pub created_at: String,
+}
+
+/// Filters of `list`, combined with AND. `*_like` are bound as LIKE patterns exactly
+/// as sent; `guids == Some(..)` restricts the list to that set.
+#[derive(Debug, Default)]
+pub(crate) struct UserFilter<'a> {
+    pub name_like: Option<&'a str>,
+    pub group_name_like: Option<&'a str>,
+    pub status: Option<i64>,
+    pub guids: Option<&'a [Vec<u8>]>,
+}
+
+/// Returns `(total, page)` ordered by name.
+pub(crate) async fn list(
+    pool: &SqlitePool,
+    f: &UserFilter<'_>,
+    current: i64,
+    page_size: i64,
+) -> Result<(i64, Vec<UserListItem>), sqlx::Error> {
+    let mut conds: Vec<String> = Vec::new();
+    if f.name_like.is_some() {
+        conds.push("u.name like ?".to_owned());
+    }
+    if f.group_name_like.is_some() {
+        conds.push("g.name like ?".to_owned());
+    }
+    if f.status.is_some() {
+        conds.push("u.status = ?".to_owned());
+    }
+    if let Some(guids) = f.guids {
+        if guids.is_empty() {
+            return Ok((0, Vec::new()));
+        }
+        conds.push(format!("u.guid in ({})", vec!["?"; guids.len()].join(", ")));
+    }
+    let where_sql = if conds.is_empty() {
+        String::new()
+    } else {
+        format!("where {}", conds.join(" and "))
+    };
+    let from = "from console_user u left join console_user_group g on g.guid = u.group_guid";
+
+    // Values are always bound, never spliced into the SQL.
+    macro_rules! bind_filters {
+        ($q:expr) => {{
+            let mut q = $q;
+            if let Some(v) = f.name_like {
+                q = q.bind(v);
+            }
+            if let Some(v) = f.group_name_like {
+                q = q.bind(v);
+            }
+            if let Some(v) = f.status {
+                q = q.bind(v);
+            }
+            if let Some(guids) = f.guids {
+                for g in guids {
+                    q = q.bind(g.as_slice());
+                }
+            }
+            q
+        }};
+    }
+
+    let count_sql = format!("select count(*) {from} {where_sql}");
+    let (total,): (i64,) = bind_filters!(sqlx::query_as(&count_sql))
+        .fetch_one(pool)
+        .await?;
+    let select_sql = format!(
+        "select u.guid as guid, u.name as name, u.display_name as display_name,
+                u.email as email, u.note as note, u.is_admin as is_admin, u.status as status,
+                u.must_change_password as must_change_password,
+                coalesce(g.name, '') as group_name,
+                strftime('%Y-%m-%dT%H:%M:%S', u.created_at) as created_at
+         {from} {where_sql} order by u.name limit ? offset ?"
+    );
+    let offset = current.saturating_sub(1).max(0).saturating_mul(page_size);
+    let rows = bind_filters!(sqlx::query(&select_sql))
+        .bind(page_size)
+        .bind(offset)
+        .fetch_all(pool)
+        .await?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in &rows {
+        out.push(UserListItem {
+            user: row_to_user(row)?,
+            group_name: row.try_get("group_name")?,
+            created_at: row
+                .try_get::<Option<String>, _>("created_at")?
+                .unwrap_or_default(),
+        });
+    }
+    Ok((total, out))
+}
+
+/// Optional changes of `apply_patch`; `None` leaves the field unchanged.
+/// `password_hash` is an already computed bcrypt hash.
+#[derive(Debug, Default)]
+pub(crate) struct UserPatch<'a> {
+    pub display_name: Option<&'a str>,
+    pub email: Option<&'a str>,
+    pub note: Option<&'a str>,
+    pub group_guid: Option<&'a [u8]>,
+    pub is_admin: Option<bool>,
+    pub password_hash: Option<&'a str>,
+}
+
+async fn user_status(conn: &mut SqliteConnection, guid: &[u8]) -> Result<Option<i64>, sqlx::Error> {
+    let row: Option<(i64,)> = sqlx::query_as("select status from console_user where guid = ?")
+        .bind(guid)
+        .fetch_optional(conn)
+        .await?;
+    Ok(row.map(|r| r.0))
+}
+
+/// Applies `p` in one transaction. A new password also revokes every session of the
+/// user. Removing admin rights is refused with `LastAdmin` when no other enabled admin
+/// would remain; nothing is changed then.
+pub(crate) async fn apply_patch(
+    pool: &SqlitePool,
+    guid: &[u8],
+    p: &UserPatch<'_>,
+) -> Result<(), UserWriteError> {
+    let mut tx = pool.begin().await?;
+    if user_status(&mut tx, guid).await?.is_none() {
+        return Err(UserWriteError::NotFound);
+    }
+    sqlx::query(
+        "update console_user set display_name = coalesce(?, display_name),
+           email = coalesce(?, email), note = coalesce(?, note),
+           group_guid = coalesce(?, group_guid)
+         where guid = ?",
+    )
+    .bind(p.display_name)
+    .bind(p.email)
+    .bind(p.note)
+    .bind(p.group_guid)
+    .bind(guid)
+    .execute(&mut tx)
+    .await?;
+    match p.is_admin {
+        Some(true) => {
+            sqlx::query("update console_user set is_admin = 1 where guid = ?")
+                .bind(guid)
+                .execute(&mut tx)
+                .await?;
+        }
+        Some(false) => {
+            let sql = format!(
+                "update console_user set is_admin = 0 where guid = ?1 and {KEEPS_AN_ADMIN}"
+            );
+            let res = sqlx::query(&sql).bind(guid).execute(&mut tx).await?;
+            if res.rows_affected() == 0 {
+                return Err(UserWriteError::LastAdmin);
+            }
+        }
+        None => {}
+    }
+    if let Some(hash) = p.password_hash {
+        sqlx::query("update console_user set password_hash = ? where guid = ?")
+            .bind(hash)
+            .bind(guid)
+            .execute(&mut tx)
+            .await?;
+        sessions::delete_user_sessions(&mut tx, guid).await?;
+    }
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Enables or disables a user. Disabling revokes all of the user's sessions in the same
+/// transaction, and is refused with `LastAdmin` for the last enabled admin.
+pub(crate) async fn set_status(
+    pool: &SqlitePool,
+    guid: &[u8],
+    enabled: bool,
+) -> Result<(), UserWriteError> {
+    let mut tx = pool.begin().await?;
+    if user_status(&mut tx, guid).await?.is_none() {
+        return Err(UserWriteError::NotFound);
+    }
+    if enabled {
+        sqlx::query("update console_user set status = 1 where guid = ?")
+            .bind(guid)
+            .execute(&mut tx)
+            .await?;
+    } else {
+        let sql =
+            format!("update console_user set status = 0 where guid = ?1 and {KEEPS_AN_ADMIN}");
+        let res = sqlx::query(&sql).bind(guid).execute(&mut tx).await?;
+        if res.rows_affected() == 0 {
+            return Err(UserWriteError::LastAdmin);
+        }
+        sessions::delete_user_sessions(&mut tx, guid).await?;
+    }
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Deletes a disabled user in one transaction: unassigns its devices (`peer.user`),
+/// and removes its sessions and the access rules that target it.
+pub(crate) async fn delete_user(pool: &SqlitePool, guid: &[u8]) -> Result<(), UserWriteError> {
+    let mut tx = pool.begin().await?;
+    match user_status(&mut tx, guid).await? {
+        None => return Err(UserWriteError::NotFound),
+        Some(0) => {}
+        Some(_) => return Err(UserWriteError::NotDisabled),
+    }
+    sqlx::query("update peer set user = null where user = ?")
+        .bind(guid)
+        .execute(&mut tx)
+        .await?;
+    sessions::delete_user_sessions(&mut tx, guid).await?;
+    sqlx::query("delete from console_access_rule where target_type = 2 and target_guid = ?")
+        .bind(guid)
+        .execute(&mut tx)
+        .await?;
+    sqlx::query("delete from console_user where guid = ?")
+        .bind(guid)
+        .execute(&mut tx)
+        .await?;
+    tx.commit().await?;
+    Ok(())
 }
 
 /// Creates the `admin` user when no console user exists. Returns the generated password.

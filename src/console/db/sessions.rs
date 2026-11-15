@@ -110,6 +110,31 @@ pub(crate) async fn delete_other_sessions(
     Ok(())
 }
 
+/// Deletes every session of `user_guid`. Takes a connection so it can run inside the
+/// caller's transaction.
+pub(crate) async fn delete_user_sessions(
+    conn: &mut SqliteConnection,
+    user_guid: &[u8],
+) -> Result<u64, sqlx::Error> {
+    let res = sqlx::query("delete from console_session where user_guid = ?")
+        .bind(user_guid)
+        .execute(conn)
+        .await?;
+    Ok(res.rows_affected())
+}
+
+/// Deletes every session of each of `user_guids` in one transaction.
+pub(crate) async fn delete_sessions_of_users(
+    pool: &SqlitePool,
+    user_guids: &[Vec<u8>],
+) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    for guid in user_guids {
+        delete_user_sessions(&mut tx, guid).await?;
+    }
+    tx.commit().await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

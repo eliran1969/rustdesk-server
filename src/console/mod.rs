@@ -31,7 +31,7 @@ use axum::{
     error_handling::HandleErrorLayer,
     http::StatusCode,
     response::{IntoResponse, Response},
-    routing::{any, get, post},
+    routing::{any, get, patch, post, put},
     BoxError, Json, Router,
 };
 use hbb_common::{log, tokio, ResultType};
@@ -74,6 +74,21 @@ pub(crate) fn router(state: ConsoleState) -> Router {
             "/api/console/change-password",
             post(api::account::change_password),
         )
+        .route("/api/users", get(api::users::list).post(api::users::create))
+        .route("/api/users/force-logout", post(api::users::force_logout))
+        .route("/api/users/invite", post(api::users::not_supported))
+        .route("/api/users/tfa/totp/enforce", put(api::users::not_supported))
+        .route(
+            "/api/users/disable_login_verification",
+            put(api::users::not_supported),
+        )
+        .route("/api/users/tfa/reset", put(api::users::not_supported))
+        .route(
+            "/api/users/:guid",
+            patch(api::users::update).delete(api::users::delete),
+        )
+        .route("/api/users/:guid/enable", post(api::users::enable))
+        .route("/api/users/:guid/disable", post(api::users::disable))
         .fallback(any(web::serve))
         .layer(axum::Extension(state));
     with_limits(app, REQUEST_TIMEOUT, MAX_CONCURRENT_REQUESTS)
