@@ -1,0 +1,62 @@
+# RustDesk server (hbbs + hbbr + rustdesk-utils) with the embedded web console.
+# Classic layout: binaries in /usr/bin, WORKDIR /root (map your data folder to /root).
+# Build from the repository root:
+#   docker buildx build --platform linux/amd64,linux/arm64 -f docker/Dockerfile.console -t rustdesk-server-console:latest .
+# Rust is cross-compiled natively on the build host (no QEMU) to static musl binaries.
+
+ARG TARGETARCH
+
+# ---- 1. web console UI ----
+FROM --platform=$BUILDPLATFORM node:20-alpine AS ui
+WORKDIR /ui
+COPY console-ui/package.json console-ui/package-lock.json ./
+RUN npm ci
+COPY console-ui/ ./
+RUN npm run build
+
+# ---- 2. Rust build, one stage per target architecture ----
+# The per-target *_OPENSSL_DIR variables point openssl-sys at the static OpenSSL built below.
+FROM --platform=$BUILDPLATFORM messense/rust-musl-cross:x86_64-musl AS build-amd64
+ENV RUST_TARGET=x86_64-unknown-linux-musl \
+    OPENSSL_PLATFORM=linux-x86_64 \
+    X86_64_UNKNOWN_LINUX_MUSL_OPENSSL_DIR=/opt/openssl \
+    X86_64_UNKNOWN_LINUX_MUSL_OPENSSL_STATIC=1
+
+FROM --platform=$BUILDPLATFORM messense/rust-musl-cross:aarch64-musl AS build-arm64
+ENV RUST_TARGET=aarch64-unknown-linux-musl \
+    OPENSSL_PLATFORM=linux-aarch64 \
+    AARCH64_UNKNOWN_LINUX_MUSL_OPENSSL_DIR=/opt/openssl \
+    AARCH64_UNKNOWN_LINUX_MUSL_OPENSSL_STATIC=1
+
+FROM build-${TARGETARCH} AS build
+# openssl-sys (pulled in by hbb_common) needs a static OpenSSL for the musl target
+ARG OPENSSL_VERSION=3.0.15
+RUN set -eux; \
+    mkdir /tmp/ossl && cd /tmp/ossl; \
+    curl -fsSL https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz | tar xz --strip-components=1; \
+    CC=${RUST_TARGET%%-unknown*}-unknown-linux-musl-gcc ./Configure ${OPENSSL_PLATFORM} no-shared no-tests \
+        --prefix=/opt/openssl --openssldir=/opt/openssl --libdir=lib; \
+    make -j"$(nproc)" build_libs; make install_dev; \
+    rm -rf /tmp/ossl
+# build scripts run on the (glibc) build host and need the system OpenSSL + pkg-config
+RUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+COPY . .
+# The UI must be in place before cargo runs (it is embedded into hbbs).
+COPY --from=ui /ui/dist ./console-ui/dist
+# sqlx query! macros need the database at compile time (see .env)
+ENV DATABASE_URL=sqlite://./db_v2.sqlite3
+RUN cargo build --release --target ${RUST_TARGET} --bin hbbs --bin hbbr --bin rustdesk-utils \
+ && mkdir /out \
+ && cp target/${RUST_TARGET}/release/hbbs target/${RUST_TARGET}/release/hbbr target/${RUST_TARGET}/release/rustdesk-utils /out/
+
+# ---- 3. runtime ----
+FROM scratch
+COPY --from=build /out/hbbs /usr/bin/hbbs
+COPY --from=build /out/hbbr /usr/bin/hbbr
+COPY --from=build /out/rustdesk-utils /usr/bin/rustdesk-utils
+WORKDIR /root
+ENV HOME=/root
+EXPOSE 21114 21115 21116 21116/udp 21117 21118 21119

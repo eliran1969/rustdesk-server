@@ -1,0 +1,11 @@
+.git
+.superpowers
+target
+console-ui/node_modules
+console-ui/dist
+docker-classic
+kubernetes
+debian
+**/*.bak-*
+test.sqlite3
+data
