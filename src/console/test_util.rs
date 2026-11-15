@@ -85,15 +85,22 @@ pub(crate) async fn test_app() -> Router {
 
 /// Like `test_app`, but also returns the (shared, in-memory) pool for seeding and asserts.
 pub(crate) async fn test_app_with_db() -> (Router, SqlitePool) {
+    let (app, db, _pm) = test_app_with_db_pm().await;
+    (app, db)
+}
+
+/// Like `test_app_with_db`, but also returns the app's `PeerMap`.
+pub(crate) async fn test_app_with_db_pm() -> (Router, SqlitePool, PeerMap) {
     let db = test_pool().await;
     create_peer_table(&db).await;
     super::db::migrations::migrate(&db, ":memory:").await.unwrap();
+    let pm = test_pm().await;
     let app = router(ConsoleState {
         db: db.clone(),
-        pm: test_pm().await,
+        pm: pm.clone(),
         limiter: std::sync::Arc::new(super::auth::LoginLimiter::new()),
     });
-    (app, db)
+    (app, db, pm)
 }
 
 pub(crate) async fn body_string(res: Response) -> String {

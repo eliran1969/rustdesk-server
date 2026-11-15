@@ -69,6 +69,16 @@ pub(crate) fn router(state: ConsoleState) -> Router {
         .route("/api/currentUser", post(api::account::current_user))
         .route("/api/logout", post(api::account::logout))
         .route("/api/devices", get(api::devices::list))
+        .route("/api/devices/cli", post(api::devices::cli))
+        .route("/api/devices/deploy", post(api::devices::deploy))
+        .route(
+            "/api/devices/:guid",
+            patch(api::devices::update).delete(api::devices::delete),
+        )
+        .route("/api/devices/:guid/enable", post(api::devices::enable))
+        .route("/api/devices/:guid/disable", post(api::devices::disable))
+        .route("/api/devices/:guid/assign", post(api::devices::assign))
+        .route("/api/peers", get(api::peers::list))
         .route("/api/console/me", get(api::account::console_me))
         .route(
             "/api/console/change-password",

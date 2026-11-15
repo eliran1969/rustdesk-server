@@ -188,4 +188,10 @@ impl PeerMap {
     pub(crate) async fn is_in_memory(&self, id: &str) -> bool {
         self.map.read().await.contains_key(id)
     }
+
+    /// Drops `id` from the in-memory map (used when the console deletes a device). The
+    /// write lock is released before returning.
+    pub(crate) async fn remove(&self, id: &str) {
+        self.map.write().await.remove(id);
+    }
 }
