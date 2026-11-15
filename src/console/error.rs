@@ -14,6 +14,8 @@ pub(crate) enum ApiError {
     /// Login failure; same body for unknown user, wrong password and disabled user.
     WrongCredentials,
     Forbidden,
+    /// The user must change the initial password before using anything else.
+    PasswordChangeRequired,
     NotFound,
     TooManyRequests,
     Internal(String),
@@ -29,6 +31,10 @@ impl IntoResponse for ApiError {
                 "Wrong username or password".to_owned(),
             ),
             ApiError::Forbidden => (StatusCode::FORBIDDEN, "Forbidden".to_owned()),
+            ApiError::PasswordChangeRequired => (
+                StatusCode::FORBIDDEN,
+                "Password change required".to_owned(),
+            ),
             ApiError::NotFound => (StatusCode::NOT_FOUND, "Not found".to_owned()),
             ApiError::TooManyRequests => (
                 StatusCode::TOO_MANY_REQUESTS,
@@ -64,6 +70,11 @@ mod tests {
             (ApiError::Unauthorized, 401, r#"{"error":"Unauthorized"}"#),
             (ApiError::WrongCredentials, 401, r#"{"error":"Wrong username or password"}"#),
             (ApiError::Forbidden, 403, r#"{"error":"Forbidden"}"#),
+            (
+                ApiError::PasswordChangeRequired,
+                403,
+                r#"{"error":"Password change required"}"#,
+            ),
             (ApiError::NotFound, 404, r#"{"error":"Not found"}"#),
             (ApiError::TooManyRequests, 429, r#"{"error":"Too many requests"}"#),
             (ApiError::Internal("secret".into()), 500, r#"{"error":"Internal error"}"#),

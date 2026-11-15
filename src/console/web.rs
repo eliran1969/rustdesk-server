@@ -13,6 +13,12 @@ use rust_embed::RustEmbed;
 struct Assets;
 
 const INDEX: &str = "index.html";
+/// The Vite build loads only same-origin module scripts and stylesheets (no inline
+/// scripts); `'unsafe-inline'` styles are allowed for React `style` attributes.
+const CSP: &str = concat!(
+    "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; ",
+    "frame-ancestors 'none'; base-uri 'none'"
+);
 
 /// Router fallback: unknown `/api/*` paths get the JSON 404; every other GET/HEAD
 /// serves a file from the embedded UI, or `index.html` when no file matches.
@@ -71,6 +77,11 @@ fn with_security_headers(mut res: Response) -> Response {
     let headers = res.headers_mut();
     headers.insert("x-frame-options", HeaderValue::from_static("DENY"));
     headers.insert("x-content-type-options", HeaderValue::from_static("nosniff"));
+    headers.insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static(CSP),
+    );
+    headers.insert(header::REFERRER_POLICY, HeaderValue::from_static("no-referrer"));
     res
 }
 
@@ -98,6 +109,14 @@ mod tests {
         assert_eq!(h["x-frame-options"], "DENY");
         assert_eq!(h["x-content-type-options"], "nosniff");
         assert_eq!(h[header::CACHE_CONTROL], "no-cache");
+        assert_eq!(
+            h[header::CONTENT_SECURITY_POLICY],
+            concat!(
+                "default-src 'self'; img-src 'self' data:; ",
+                "style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'"
+            )
+        );
+        assert_eq!(h[header::REFERRER_POLICY], "no-referrer");
         let body = body_string(res).await;
         assert!(body.to_ascii_lowercase().contains("<html"), "{body}");
     }

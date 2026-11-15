@@ -487,6 +487,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn must_change_password_blocks_other_routes_until_changed() {
+        let (app, db) = test_app_with_db().await;
+        insert_user(&db, "alice", PW, true).await;
+        sqlx::query("update console_user set must_change_password = 1 where name = 'alice'")
+            .execute(&db)
+            .await
+            .unwrap();
+        let token = login_token(&app, "alice", PW).await;
+        let (status, body) = send(&app, req("GET", "/api/devices", None, Some(&token))).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(body, json!({"error": "Password change required"}));
+        // The exempt routes still work.
+        let (status, _) = send(&app, req("GET", "/api/console/me", None, Some(&token))).await;
+        assert_eq!(status, StatusCode::OK);
+        let (status, _) = send(&app, req("POST", "/api/currentUser", None, Some(&token))).await;
+        assert_eq!(status, StatusCode::OK);
+
+        let (status, body) = send(
+            &app,
+            req(
+                "POST",
+                "/api/console/change-password",
+                Some(json!({"old_password": PW, "new_password": "brand-new-pw"})),
+                Some(&token),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let (status, body) = send(&app, req("GET", "/api/devices", None, Some(&token))).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+    }
+
+    #[tokio::test]
     async fn change_password_clears_flag() {
         let (app, db) = test_app_with_db().await;
         insert_user(&db, "alice", PW, false).await;

@@ -28,8 +28,11 @@ pub(crate) mod test_util;
 
 use crate::{common::get_arg_or, peer::PeerMap};
 use axum::{
+    error_handling::HandleErrorLayer,
+    http::StatusCode,
+    response::{IntoResponse, Response},
     routing::{any, get, post},
-    Router,
+    BoxError, Json, Router,
 };
 use hbb_common::{log, tokio, ResultType};
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
@@ -37,6 +40,21 @@ use state::ConsoleState;
 use std::{net::SocketAddr, str::FromStr, sync::Arc, time::Duration};
 
 const DEFAULT_PORT: u16 = 21114;
+/// Time a client gets to send the complete request headers (slowloris guard).
+const HEADER_READ_TIMEOUT: Duration = Duration::from_secs(10);
+/// Upper bound for one request, including the wait for a concurrency slot.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+/// Requests handled at the same time across the whole console; more wait in line.
+const MAX_CONCURRENT_REQUESTS: usize = 256;
+
+async fn handle_layer_error(err: BoxError) -> Response {
+    let (status, msg) = if err.is::<tower::timeout::error::Elapsed>() {
+        (StatusCode::REQUEST_TIMEOUT, "Request timeout")
+    } else {
+        (StatusCode::SERVICE_UNAVAILABLE, "Service unavailable")
+    };
+    (status, Json(serde_json::json!({ "error": msg }))).into_response()
+}
 
 pub(crate) fn router(state: ConsoleState) -> Router {
     Router::new()
@@ -55,6 +73,14 @@ pub(crate) fn router(state: ConsoleState) -> Router {
         )
         .fallback(any(web::serve))
         .layer(axum::Extension(state))
+        .layer(
+            tower::ServiceBuilder::new()
+                .layer(HandleErrorLayer::new(handle_layer_error))
+                .timeout(REQUEST_TIMEOUT)
+                .layer(tower::limit::GlobalConcurrencyLimitLayer::new(
+                    MAX_CONCURRENT_REQUESTS,
+                )),
+        )
 }
 
 async fn open_pool(db_url: &str) -> Result<sqlx::SqlitePool, sqlx::Error> {
@@ -119,7 +145,7 @@ pub(crate) async fn start(pm: PeerMap, db_url: String) {
             }
         };
         let server = match axum::Server::from_tcp(listener) {
-            Ok(builder) => builder,
+            Ok(builder) => builder.http1_header_read_timeout(HEADER_READ_TIMEOUT),
             Err(e) => {
                 log::error!("console: failed to start server on {}: {}", addr, e);
                 return;

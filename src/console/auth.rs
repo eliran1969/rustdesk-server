@@ -32,6 +32,16 @@ const WINDOW: Duration = Duration::from_secs(60);
 /// the CPU bcrypt can take from hbbs, and makes "check limit -> verify -> record failure"
 /// effectively serial so parallel requests cannot overshoot the failure limit by much.
 const VERIFY_SLOTS: usize = 2;
+/// How long a password check may wait for a verify slot before it is answered with 429.
+const VERIFY_SLOT_TIMEOUT: Duration = Duration::from_secs(10);
+/// Routes a user with `must_change_password` may still use: everything else answers
+/// 403 `Password change required` until the password is changed.
+const PASSWORD_CHANGE_EXEMPT: &[&str] = &[
+    "/api/console/me",
+    "/api/console/change-password",
+    "/api/logout",
+    "/api/currentUser",
+];
 
 /// A valid bcrypt (cost 12) hash of a throwaway password. Login verifies against it when
 /// the username is unknown, so the response time does not reveal whether a user exists.
@@ -53,6 +63,7 @@ struct LimiterInner {
 pub(crate) struct LoginLimiter {
     inner: Mutex<LimiterInner>,
     verify_slots: Semaphore,
+    slot_timeout: Duration,
     max_failures: u32,
     window: Duration,
 }
@@ -75,6 +86,7 @@ impl LoginLimiter {
                 last_prune: Instant::now(),
             }),
             verify_slots: Semaphore::new(VERIFY_SLOTS),
+            slot_timeout: VERIFY_SLOT_TIMEOUT,
             max_failures,
             window,
         }
@@ -91,12 +103,12 @@ impl LoginLimiter {
         }
     }
 
-    /// Waits for one of the `VERIFY_SLOTS` password-check slots. Callers check the limit
-    /// again after acquiring it.
+    /// Waits (at most `VERIFY_SLOT_TIMEOUT`, then 429) for one of the `VERIFY_SLOTS`
+    /// password-check slots. Callers check the limit again after acquiring it.
     pub(crate) async fn verify_slot(&self) -> Result<SemaphorePermit<'_>, ApiError> {
-        self.verify_slots
-            .acquire()
+        tokio::time::timeout(self.slot_timeout, self.verify_slots.acquire())
             .await
+            .map_err(|_| ApiError::TooManyRequests)?
             .map_err(|e| ApiError::Internal(format!("verify semaphore closed: {e}")))
     }
 
@@ -211,7 +223,9 @@ fn console_state<B>(req: &RequestParts<B>) -> Result<ConsoleState, ApiError> {
 }
 
 /// An authenticated, enabled user. Rejects with 401 when the bearer token is missing or
-/// unknown, or when the user was deleted or disabled after logging in.
+/// unknown, or when the user was deleted or disabled after logging in, and with 403
+/// `Password change required` while `must_change_password` is set (except on
+/// `PASSWORD_CHANGE_EXEMPT` routes).
 pub(crate) struct AuthUser(
     pub User,
     // Not yet consulted: every current route accepts both web and client sessions.
@@ -234,6 +248,9 @@ impl<B: Send> FromRequest<B> for AuthUser {
             .ok_or(ApiError::Unauthorized)?;
         if user.status != 1 {
             return Err(ApiError::Unauthorized);
+        }
+        if user.must_change_password && !PASSWORD_CHANGE_EXEMPT.contains(&req.uri().path()) {
+            return Err(ApiError::PasswordChangeRequired);
         }
         if let Err(e) = sessions::touch_session(&state.db, &token_hash).await {
             log::warn!("console: failed to update session last_seen: {}", e);
@@ -345,6 +362,23 @@ mod tests {
         assert_eq!(bearer_token(&h), None);
         h.insert(header::AUTHORIZATION, "Bearer ".parse().unwrap());
         assert_eq!(bearer_token(&h), None);
+    }
+
+    #[tokio::test]
+    async fn verify_slot_times_out_with_429() {
+        let mut l = LoginLimiter::new();
+        l.slot_timeout = Duration::from_millis(50);
+        let _held: Vec<_> = hold_all_slots(&l).await;
+        let res = l.verify_slot().await;
+        assert!(matches!(res, Err(ApiError::TooManyRequests)), "{res:?}");
+    }
+
+    async fn hold_all_slots(l: &LoginLimiter) -> Vec<SemaphorePermit<'_>> {
+        let mut held = Vec::new();
+        for _ in 0..VERIFY_SLOTS {
+            held.push(l.verify_slot().await.unwrap());
+        }
+        held
     }
 
     #[test]
