@@ -31,7 +31,7 @@ use axum::{
     error_handling::HandleErrorLayer,
     http::StatusCode,
     response::{IntoResponse, Response},
-    routing::{any, get, patch, post, put},
+    routing::{any, delete, get, patch, post, put},
     BoxError, Json, Router,
 };
 use hbb_common::{log, tokio, ResultType};
@@ -98,6 +98,24 @@ pub(crate) fn router(state: ConsoleState) -> Router {
             post(api::user_groups::add_users)
                 .patch(api::user_groups::update)
                 .delete(api::user_groups::delete),
+        )
+        .route(
+            "/api/device-groups",
+            get(api::device_groups::list).post(api::device_groups::create),
+        )
+        .route(
+            "/api/device-groups/:guid",
+            post(api::device_groups::add_devices)
+                .patch(api::device_groups::update)
+                .delete(api::device_groups::delete),
+        )
+        .route(
+            "/api/device-groups/:guid/devices",
+            delete(api::device_groups::remove_devices),
+        )
+        .route(
+            "/api/device-group/accessible",
+            get(api::device_groups::accessible),
         )
         .fallback(any(web::serve))
         .layer(axum::Extension(state));

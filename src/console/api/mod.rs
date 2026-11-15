@@ -1,5 +1,6 @@
 pub(crate) mod account;
 pub(crate) mod client;
+pub(crate) mod device_groups;
 pub(crate) mod devices;
 pub(crate) mod user_groups;
 pub(crate) mod users;
