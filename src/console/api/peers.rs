@@ -50,13 +50,15 @@ pub(crate) async fn list(
 
     let mut conds: Vec<&str> = Vec::new();
     let mut binds: Vec<String> = Vec::new();
-    if let (Some(users), Some(device_groups)) = (&users, &device_groups) {
+    // Fail closed: the restriction is keyed on the caller not being an admin; a missing
+    // set for a non-admin is treated as empty, never as "everything".
+    if !user.is_admin {
         conds.push(
             "(lower(hex(peer.user)) in (select value from json_each(?)) \
              or lower(hex(e.device_group_guid)) in (select value from json_each(?)))",
         );
-        binds.push(hex_set(users));
-        binds.push(hex_set(device_groups));
+        binds.push(hex_set(users.as_deref().unwrap_or_default()));
+        binds.push(hex_set(device_groups.as_deref().unwrap_or_default()));
     }
     if enabled_only {
         conds.push("(peer.status is null or peer.status = 1)");
@@ -110,7 +112,8 @@ pub(crate) async fn list(
             "user": user_guid.as_deref().map(hex).unwrap_or_default(),
             "user_name": user_name.unwrap_or_default(),
             "device_group_name": device_group_name.unwrap_or_default(),
-            "note": note.unwrap_or_default(),
+            // A device note is admin-only information.
+            "note": if user.is_admin { note.unwrap_or_default() } else { String::new() },
         }));
     }
     Ok(Json(json!({ "total": total, "data": data })))
@@ -306,6 +309,56 @@ mod tests {
         let at = login_token(&app, "admin", PW).await;
         let (_, b) = get(&app, uri, &at).await;
         assert_eq!(ids(&b), ["p1", "p2", "p3", "p4", "p5", "p6"]);
+    }
+
+    #[tokio::test]
+    async fn peers_fail_closed_for_non_admin_without_group_and_hide_note() {
+        let (app, db) = test_app_with_db().await;
+        insert_user(&db, "admin", PW, true).await;
+        let eve = insert_user(&db, "eve", PW, false).await;
+        let frank = insert_user(&db, "frank", PW, false).await;
+        insert_user(&db, "gina", PW, false).await;
+        for id in ["p1", "p2", "p3"] {
+            insert_peer(&db, id, id.as_bytes()).await;
+        }
+        assign_user(&db, "p1", &eve).await;
+        assign_user(&db, "p2", &frank).await;
+        sqlx::query("update peer set note = 'secret' where id = 'p1'")
+            .execute(&db)
+            .await
+            .unwrap();
+        // Take every non-admin out of `Default`: no group, no rules.
+        sqlx::query("update console_user set group_guid = null where is_admin = 0")
+            .execute(&db)
+            .await
+            .unwrap();
+
+        // No user group, no rules: eve sees only her own device, with the note blanked.
+        let t = login_token(&app, "eve", PW).await;
+        let (s, b) = get(&app, "/api/peers?accessible=", &t).await;
+        assert_eq!(s, StatusCode::OK, "{b}");
+        assert_eq!(ids(&b), ["p1"]);
+        assert_eq!(b["total"], 1);
+        assert_eq!(b["data"][0]["note"], "");
+
+        // A non-admin with nothing assigned sees nothing.
+        let t = login_token(&app, "gina", PW).await;
+        let (_, b) = get(&app, "/api/peers?accessible=", &t).await;
+        assert!(ids(&b).is_empty(), "{b}");
+        assert_eq!(b["total"], 0);
+
+        // Admins still see the note.
+        let at = login_token(&app, "admin", PW).await;
+        let (_, b) = get(&app, "/api/peers", &at).await;
+        assert_eq!(ids(&b), ["p1", "p2", "p3"]);
+        let p1 = b["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|d| d["id"] == "p1")
+            .unwrap()
+            .clone();
+        assert_eq!(p1["note"], "secret");
     }
 
     fn hex(b: &[u8]) -> String {

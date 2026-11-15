@@ -29,6 +29,7 @@ const ADMIN_REQUIRED: &str = "Admin required!";
 const NOT_SUPPORTED: &str = "Not supported yet";
 const SELF_PROTECTED: &str = "Cannot change your own admin status";
 const LAST_ADMIN: &str = "Cannot remove the last active administrator";
+const SELF_PASSWORD: &str = "Use change password for your own account";
 
 fn internal(e: impl std::fmt::Display) -> ApiError {
     ApiError::Internal(e.to_string())
@@ -98,16 +99,18 @@ async fn hash_password(state: &ConsoleState, password: String) -> Result<String,
     auth::hash_password_blocking(password).await
 }
 
-fn row_json(item: &UserListItem) -> Value {
+/// One list row. With `full` false (a non-admin caller looking at someone else) the
+/// private fields `email`, `note` and `is_admin` are blanked.
+fn row_json(item: &UserListItem, full: bool) -> Value {
     let u = &item.user;
     json!({
         "guid": hex(&u.guid),
         "name": u.name,
         "display_name": u.display_name,
-        "email": u.email,
-        "note": u.note,
+        "email": if full { u.email.as_str() } else { "" },
+        "note": if full { u.note.as_str() } else { "" },
         "status": u.status,
-        "is_admin": u.is_admin,
+        "is_admin": full && u.is_admin,
         "group_name": item.group_name,
         "created_at": item.created_at,
     })
@@ -150,7 +153,10 @@ pub(crate) async fn list(
     let (total, rows) = users::list(&state.db, &filter, current, page_size)
         .await
         .map_err(internal)?;
-    let data: Vec<Value> = rows.iter().map(row_json).collect();
+    let data: Vec<Value> = rows
+        .iter()
+        .map(|item| row_json(item, user.is_admin || item.user.guid == user.guid))
+        .collect();
     Ok(Json(json!({ "total": total, "data": data })).into_response())
 }
 
@@ -220,6 +226,11 @@ pub(crate) async fn update(
     }
     if guid == caller.guid && req.is_admin == Some(false) {
         return Err(ApiError::BadRequest(SELF_PROTECTED.to_owned()));
+    }
+    // An admin's own password goes through `/api/console/change-password`, which checks
+    // the current password and keeps the caller's session.
+    if guid == caller.guid && req.password.is_some() {
+        return Err(ApiError::BadRequest(SELF_PASSWORD.to_owned()));
     }
     if let Some(p) = &req.password {
         check_password(p)?;
@@ -810,6 +821,89 @@ mod tests {
         assert_eq!(res.status(), StatusCode::BAD_REQUEST);
         let body: Value = serde_json::from_str(&body_string(res).await).unwrap();
         assert_eq!(body, last_err);
+    }
+
+    #[tokio::test]
+    async fn admin_cannot_set_own_password_through_patch() {
+        let (app, db) = test_app_with_db().await;
+        let admin = insert_user(&db, "admin", PW, true).await;
+        let bob = insert_user(&db, "bob", PW, false).await;
+        let token = login_token(&app, "admin", PW).await;
+        let (s, body) = send(
+            &app,
+            "PATCH",
+            &format!("/api/users/{}", hex(&admin)),
+            Some(&token),
+            Some(json!({"password": "new-password-1", "display_name": "A"})),
+        )
+        .await;
+        assert_eq!(s, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            body,
+            json!({"error": "Use change password for your own account"})
+        );
+        // Nothing was applied and the session survives.
+        let (_, list) = send(&app, "GET", "/api/users?name=admin", Some(&token), None).await;
+        assert_eq!(list["data"][0]["display_name"], "");
+        assert_eq!(session_count(&db, &admin).await, 1);
+        // Other profile fields on self still work, and other users' passwords too.
+        let (s, body) = send(
+            &app,
+            "PATCH",
+            &format!("/api/users/{}", hex(&admin)),
+            Some(&token),
+            Some(json!({"display_name": "A"})),
+        )
+        .await;
+        assert_eq!(s, StatusCode::OK, "{body}");
+        let (s, body) = send(
+            &app,
+            "PATCH",
+            &format!("/api/users/{}", hex(&bob)),
+            Some(&token),
+            Some(json!({"password": "new-password-1"})),
+        )
+        .await;
+        assert_eq!(s, StatusCode::OK, "{body}");
+    }
+
+    #[tokio::test]
+    async fn accessible_list_hides_private_fields_from_non_admins() {
+        let (app, db) = test_app_with_db().await;
+        let admin = insert_user(&db, "admin", PW, true).await;
+        let bob = insert_user(&db, "bob", PW, false).await;
+        let carol = insert_user(&db, "carol", PW, false).await;
+        let g = groups::create(&db, GroupKind::User, "G", "").await.unwrap();
+        for u in [&admin, &bob, &carol] {
+            set_group(&db, u, &g).await;
+            sqlx::query("update console_user set email = 'e@x.io', note = 'n' where guid = ?")
+                .bind(u)
+                .execute(&db)
+                .await
+                .unwrap();
+        }
+        let token = login_token(&app, "bob", PW).await;
+        let (s, body) = send(&app, "GET", "/api/users?accessible=", Some(&token), None).await;
+        assert_eq!(s, StatusCode::OK, "{body}");
+        assert_eq!(names(&body), vec!["admin", "bob", "carol"]);
+        for row in body["data"].as_array().unwrap() {
+            if row["name"] == "bob" {
+                assert_eq!(row["email"], "e@x.io");
+                assert_eq!(row["note"], "n");
+            } else {
+                assert_eq!(row["email"], "", "{row}");
+                assert_eq!(row["note"], "", "{row}");
+                assert_eq!(row["is_admin"], false, "{row}");
+            }
+        }
+        // Admins still see everything, also with `accessible`.
+        let token = login_token(&app, "admin", PW).await;
+        let (_, body) = send(&app, "GET", "/api/users?accessible=", Some(&token), None).await;
+        for row in body["data"].as_array().unwrap() {
+            assert_eq!(row["email"], "e@x.io", "{row}");
+            assert_eq!(row["note"], "n", "{row}");
+            assert_eq!(row["is_admin"], row["name"] == "admin", "{row}");
+        }
     }
 
     #[tokio::test]
