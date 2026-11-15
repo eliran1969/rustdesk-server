@@ -186,13 +186,13 @@ pub(crate) async fn change_password(
         )));
     }
     let new_hash = auth::hash_password_blocking(req.new_password).await?;
-    if !users::update_password_hash(&state.db, &user.guid, &new_hash, false).await? {
-        return Err(ApiError::Unauthorized);
-    }
     let current = auth::bearer_token(&headers)
         .map(sessions::hash_token)
         .ok_or(ApiError::Unauthorized)?;
-    sessions::delete_other_sessions(&state.db, &user.guid, &current).await?;
+    if !users::change_password_revoking_sessions(&state.db, &user.guid, &new_hash, &current).await?
+    {
+        return Err(ApiError::Unauthorized);
+    }
     Ok(Json(json!({})))
 }
 
@@ -517,6 +517,44 @@ mod tests {
         assert_eq!(status, StatusCode::OK, "{body}");
         let (status, body) = send(&app, req("GET", "/api/devices", None, Some(&token))).await;
         assert_eq!(status, StatusCode::OK, "{body}");
+    }
+
+    #[tokio::test]
+    async fn change_password_is_atomic() {
+        let (app, db) = test_app_with_db().await;
+        insert_user(&db, "alice", PW, false).await;
+        sqlx::query("update console_user set must_change_password = 1 where name = 'alice'")
+            .execute(&db)
+            .await
+            .unwrap();
+        let _other = login_token(&app, "alice", PW).await;
+        let token = login_token(&app, "alice", PW).await;
+        // Revoking the other sessions fails, so the hash update must roll back too.
+        sqlx::query(
+            "create trigger fail_session_delete before delete on console_session              begin select raise(abort, 'boom'); end",
+        )
+        .execute(&db)
+        .await
+        .unwrap();
+        let (status, _) = send(
+            &app,
+            req(
+                "POST",
+                "/api/console/change-password",
+                Some(json!({"old_password": PW, "new_password": "brand-new-pw"})),
+                Some(&token),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        let (hash, must): (String, i64) = sqlx::query_as(
+            "select password_hash, must_change_password from console_user where name = 'alice'",
+        )
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        assert!(crate::console::db::users::verify_password(PW, &hash));
+        assert_eq!(must, 1);
     }
 
     #[tokio::test]

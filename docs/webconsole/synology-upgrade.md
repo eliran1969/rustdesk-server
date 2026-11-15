@@ -237,10 +237,13 @@ sudo docker logs hbbs 2>&1 | head -50
 
 5. **משווים את לוג ההפעלה של החדשים לישנים.** ה-containers הישנים רק נעצרו, ולכן הלוג שלהם עדיין זמין. בהפעלה, hbbs כותב ללוג את רשימת שרתי ה-relay בשורה מהצורה `relay-servers=["your.host:21117"]` ואת המפתח הציבורי בשורה `Key: <מפתח>`. hbbr כותב `Key: <מפתח>` **רק** כשמצב מפתח מופעל (`-k _` או `KEY`); בלי זה אין לו שורת `Key:` בכלל.
 
+   ב-s6 (container יחיד) hbbs ו-hbbr כותבים לאותו לוג, ולכן שתי שורות `Key:` בלוג של ה-container הישן אומרות שמצב מפתח היה מופעל גם ב-hbbr.
+   שימו לב: hbbr קורא את משתנה הסביבה `PORT` ומאזין על PORT+1, ולכן אין להעתיק משתנה `PORT` ל-hbbs ול-hbbr גם יחד.
+
 ```bash
 sudo docker logs "${OLD_HBBS}-old" 2>&1 | grep -E 'relay-servers=|Key: |ALWAYS_USE_RELAY='
 sudo docker logs hbbs 2>&1 | grep -E 'relay-servers=|Key: |ALWAYS_USE_RELAY='
-# classic בלבד (ב-s6 שורת ה-Key של hbbr כבר מופיעה בלוג של ה-container היחיד):
+# container ישן נפרד (classic) בלבד; ב-s6 אין container נפרד ל-hbbr:
 sudo docker logs "${OLD_HBBR}-old" 2>&1 | grep 'Key: '
 sudo docker logs hbbr 2>&1 | grep 'Key: '
 ```

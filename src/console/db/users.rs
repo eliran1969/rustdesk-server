@@ -118,6 +118,30 @@ pub(crate) async fn update_password_hash(
     Ok(res.rows_affected() > 0)
 }
 
+/// Stores the new hash and revokes every other session of the user in one transaction:
+/// either both happen or neither. Returns whether the user was found.
+pub(crate) async fn change_password_revoking_sessions(
+    pool: &SqlitePool,
+    guid: &[u8],
+    hash: &str,
+    keep_session_hash: &[u8],
+) -> ResultType<bool> {
+    let mut tx = pool.begin().await?;
+    let res = sqlx::query(
+        "update console_user set password_hash = ?, must_change_password = 0 where guid = ?",
+    )
+    .bind(hash)
+    .bind(guid)
+    .execute(&mut tx)
+    .await?;
+    if res.rows_affected() == 0 {
+        return Ok(false);
+    }
+    super::sessions::delete_other_sessions(&mut tx, guid, keep_session_hash).await?;
+    tx.commit().await?;
+    Ok(true)
+}
+
 fn generate_password() -> String {
     let mut rng = OsRng;
     (0..GENERATED_PASSWORD_LEN)
@@ -131,24 +155,19 @@ fn generate_password() -> String {
 
 /// Creates the `admin` user when no console user exists. Returns the generated password.
 pub(crate) async fn ensure_initial_admin(pool: &SqlitePool) -> ResultType<Option<String>> {
-    let (count,): (i64,) = sqlx::query_as("select count(*) from console_user")
-        .fetch_one(pool)
-        .await?;
-    if count > 0 {
-        return Ok(None);
-    }
     let password = generate_password();
     let hash = hash_password(&password)?;
     let guid = uuid::Uuid::new_v4().as_bytes().to_vec();
-    sqlx::query(
+    // One statement, so concurrent starters cannot both create an admin.
+    let res = sqlx::query(
         "insert into console_user(guid, name, password_hash, is_admin, status, must_change_password)
-         values(?, 'admin', ?, 1, 1, 1)",
+         select ?, 'admin', ?, 1, 1, 1 where not exists (select 1 from console_user)",
     )
     .bind(guid)
     .bind(hash)
     .execute(pool)
     .await?;
-    Ok(Some(password))
+    Ok((res.rows_affected() > 0).then_some(password))
 }
 
 #[cfg(test)]
@@ -174,6 +193,34 @@ mod tests {
         assert!(user.must_change_password);
         assert!(verify_password(&pw, &hash));
         assert!(ensure_initial_admin(&pool).await.unwrap().is_none());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn initial_admin_insert_is_atomic() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("db.sqlite3").to_string_lossy().to_string();
+        let pool = crate::console::open_pool(&path).await.unwrap();
+        crate::console::db::migrations::migrate(&pool, &path)
+            .await
+            .unwrap();
+        let tasks: Vec<_> = (0..6)
+            .map(|_| {
+                let pool = pool.clone();
+                tokio::spawn(async move { ensure_initial_admin(&pool).await })
+            })
+            .collect();
+        let mut created = 0;
+        for t in tasks {
+            if t.await.unwrap().unwrap().is_some() {
+                created += 1;
+            }
+        }
+        assert_eq!(created, 1);
+        let (count,): (i64,) = sqlx::query_as("select count(*) from console_user")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(count, 1);
     }
 
     #[test]

@@ -42,14 +42,17 @@ use std::{net::SocketAddr, str::FromStr, sync::Arc, time::Duration};
 const DEFAULT_PORT: u16 = 21114;
 /// Time a client gets to send the complete request headers (slowloris guard).
 const HEADER_READ_TIMEOUT: Duration = Duration::from_secs(10);
-/// Upper bound for one request, including the wait for a concurrency slot.
+/// Upper bound for running one admitted request. Requests over the concurrency limit
+/// are not queued: they are rejected at once (load shedding), so they never wait here.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
-/// Requests handled at the same time across the whole console; more wait in line.
+/// Requests handled at the same time across the whole console; more get 503 "Server busy".
 const MAX_CONCURRENT_REQUESTS: usize = 256;
 
 async fn handle_layer_error(err: BoxError) -> Response {
     let (status, msg) = if err.is::<tower::timeout::error::Elapsed>() {
-        (StatusCode::REQUEST_TIMEOUT, "Request timeout")
+        (StatusCode::SERVICE_UNAVAILABLE, "Request timed out")
+    } else if err.is::<tower::load_shed::error::Overloaded>() {
+        (StatusCode::SERVICE_UNAVAILABLE, "Server busy")
     } else {
         (StatusCode::SERVICE_UNAVAILABLE, "Service unavailable")
     };
@@ -57,7 +60,7 @@ async fn handle_layer_error(err: BoxError) -> Response {
 }
 
 pub(crate) fn router(state: ConsoleState) -> Router {
-    Router::new()
+    let app = Router::new()
         .route("/api/login-options", get(api::client::login_options))
         .route("/api/sysinfo", post(api::client::sysinfo))
         .route("/api/sysinfo_ver", post(api::client::sysinfo_ver))
@@ -72,15 +75,18 @@ pub(crate) fn router(state: ConsoleState) -> Router {
             post(api::account::change_password),
         )
         .fallback(any(web::serve))
-        .layer(axum::Extension(state))
-        .layer(
-            tower::ServiceBuilder::new()
-                .layer(HandleErrorLayer::new(handle_layer_error))
-                .timeout(REQUEST_TIMEOUT)
-                .layer(tower::limit::GlobalConcurrencyLimitLayer::new(
-                    MAX_CONCURRENT_REQUESTS,
-                )),
-        )
+        .layer(axum::Extension(state));
+    with_limits(app, REQUEST_TIMEOUT, MAX_CONCURRENT_REQUESTS)
+}
+
+fn with_limits(app: Router, timeout: Duration, max_concurrent: usize) -> Router {
+    app.layer(
+        tower::ServiceBuilder::new()
+            .layer(HandleErrorLayer::new(handle_layer_error))
+            .timeout(timeout)
+            .load_shed()
+            .layer(tower::limit::GlobalConcurrencyLimitLayer::new(max_concurrent)),
+    )
 }
 
 async fn open_pool(db_url: &str) -> Result<sqlx::SqlitePool, sqlx::Error> {
@@ -96,6 +102,11 @@ async fn open_pool(db_url: &str) -> Result<sqlx::SqlitePool, sqlx::Error> {
 
 /// CLI entry (rustdesk-utils): sets a console user's password. Returns whether the user exists.
 pub async fn cli_set_password(db_url: &str, name: &str, password: &str) -> ResultType<bool> {
+    // Never create an empty database by accident (wrong DB_URL / wrong directory).
+    let file = db_url.strip_prefix("sqlite://").or_else(|| db_url.strip_prefix("sqlite:")).unwrap_or(db_url);
+    if !std::path::Path::new(file).exists() {
+        return Err(hbb_common::anyhow::anyhow!("Database not found"));
+    }
     let pool = open_pool(db_url).await?;
     db::migrations::migrate(&pool, db_url).await?;
     db::users::set_password(&pool, name, password, false).await
@@ -164,4 +175,66 @@ pub(crate) async fn start(pm: PeerMap, db_url: String) {
             log::error!("console: server stopped: {}", e);
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::{body::Body, http::Request};
+    use tower::ServiceExt;
+
+    async fn slow() -> &'static str {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        "ok"
+    }
+
+    async fn call(app: &Router) -> (StatusCode, String) {
+        let req = Request::builder().uri("/slow").body(Body::empty()).unwrap();
+        let res = app.clone().oneshot(req).await.unwrap();
+        let status = res.status();
+        (status, test_util::body_string(res).await)
+    }
+
+    #[tokio::test]
+    async fn handler_timeout_returns_503() {
+        let app = with_limits(
+            Router::new().route("/slow", get(slow)),
+            Duration::from_millis(50),
+            8,
+        );
+        let (status, body) = call(&app).await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(body, r#"{"error":"Request timed out"}"#);
+    }
+
+    #[tokio::test]
+    async fn over_limit_requests_are_shed_immediately() {
+        let app = with_limits(
+            Router::new().route("/slow", get(slow)),
+            Duration::from_secs(5),
+            1,
+        );
+        let (a, b) = tokio::join!(call(&app), call(&app));
+        let mut got = [a, b];
+        got.sort_by_key(|(s, _)| s.as_u16());
+        assert_eq!(got[0], (StatusCode::OK, "ok".to_owned()));
+        assert_eq!(
+            got[1],
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                r#"{"error":"Server busy"}"#.to_owned()
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn cli_set_password_refuses_missing_db() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("missing.sqlite3");
+        let err = cli_set_password(&path.to_string_lossy(), "admin", "password-1")
+            .await
+            .unwrap_err();
+        assert_eq!(err.to_string(), "Database not found");
+        assert!(!path.exists());
+    }
 }

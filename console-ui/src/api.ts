@@ -62,7 +62,11 @@ export function getToken(): string | null {
 }
 
 export function setToken(token: string): void {
-  localStorage.setItem(TOKEN_KEY, token)
+  try {
+    localStorage.setItem(TOKEN_KEY, token)
+  } catch {
+    // Storage unavailable: the session lasts until the page is closed.
+  }
 }
 
 export function clearToken(): void {

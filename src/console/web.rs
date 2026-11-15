@@ -31,6 +31,10 @@ pub(crate) async fn serve(method: Method, uri: Uri) -> Response {
         return with_security_headers(StatusCode::METHOD_NOT_ALLOWED.into_response());
     }
     let rel = path.trim_start_matches('/');
+    // A missing hashed bundle must fail loudly, not come back as index.html.
+    if rel.starts_with("assets/") && !Assets::get(rel).is_some() {
+        return with_security_headers(StatusCode::NOT_FOUND.into_response());
+    }
     let found = if is_safe_path(rel) {
         Assets::get(rel).map(|f| (rel, f))
     } else {
@@ -138,6 +142,14 @@ mod tests {
             .starts_with("application/json"));
         let body: serde_json::Value = serde_json::from_str(&body_string(res).await).unwrap();
         assert!(body["error"].is_string());
+    }
+
+    #[tokio::test]
+    async fn web_missing_asset_returns_404() {
+        let res = get("/assets/nope.js").await;
+        assert_eq!(res.status(), StatusCode::NOT_FOUND);
+        assert_eq!(res.headers()["x-content-type-options"], "nosniff");
+        assert!(!body_string(res).await.to_ascii_lowercase().contains("<html"));
     }
 
     #[tokio::test]

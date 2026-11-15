@@ -3,7 +3,7 @@ use hbb_common::{
     sha2::{Digest, Sha256},
     ResultType,
 };
-use sqlx::SqlitePool;
+use sqlx::{SqliteConnection, SqlitePool};
 
 const TOKEN_BYTES: usize = 32;
 
@@ -96,15 +96,16 @@ pub(crate) async fn delete_session(pool: &SqlitePool, token_hash: &[u8]) -> Resu
 }
 
 /// Deletes every session of `user_guid` except the one identified by `keep_hash`.
+/// Takes a connection so it can run inside the caller's transaction.
 pub(crate) async fn delete_other_sessions(
-    pool: &SqlitePool,
+    conn: &mut SqliteConnection,
     user_guid: &[u8],
     keep_hash: &[u8],
 ) -> ResultType<()> {
     sqlx::query("delete from console_session where user_guid = ? and token_hash != ?")
         .bind(user_guid)
         .bind(keep_hash)
-        .execute(pool)
+        .execute(conn)
         .await?;
     Ok(())
 }

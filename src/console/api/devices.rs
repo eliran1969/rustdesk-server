@@ -101,7 +101,7 @@ pub(crate) async fn list(
 
     let select_sql = format!(
         "select peer.guid as guid, peer.id as id, peer.status as status, peer.note as note, \
-         s.sysinfo as sysinfo, cast(s.last_online as text) as last_online, u.name as user_name \
+         s.sysinfo as sysinfo, cast(coalesce(s.last_online, peer.created_at) as text) as last_online, u.name as user_name \
          {FROM} {where_sql} order by peer.id limit ? offset ?"
     );
     let rows = bind_filters!(sqlx::query(&select_sql))
@@ -205,7 +205,24 @@ mod tests {
         assert_eq!(p2["data"].as_array().unwrap().len(), 5);
         assert_eq!(p2["total"], 35);
         assert_eq!(p2["data"][0]["status"], 1);
-        assert_eq!(p2["data"][0]["last_online"], Value::Null);
+    }
+
+    #[tokio::test]
+    async fn devices_last_online_falls_back_to_created_at() {
+        let (app, db) = test_app_with_db().await;
+        insert_user(&db, "admin", PW, true).await;
+        insert_peer(&db, "100", b"a").await;
+        let token = login_token(&app, "admin", PW).await;
+        let (_, body) = get(&app, "/api/devices", Some(&token)).await;
+        let t = body["data"][0]["last_online"].as_str().unwrap();
+        assert_eq!(t.len(), 19, "{t}");
+        assert_eq!(&t[10..11], "T");
+        let (created,): (String,) =
+            sqlx::query_as("select cast(created_at as text) from peer where id = '100'")
+                .fetch_one(&db)
+                .await
+                .unwrap();
+        assert_eq!(t, created.replacen(' ', "T", 1));
     }
 
     #[tokio::test]
