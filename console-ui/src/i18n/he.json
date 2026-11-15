@@ -1,0 +1,76 @@
+{
+  "app": {
+    "brand": "RustDesk Console",
+    "loading": "טוען…"
+  },
+  "nav": {
+    "main": "ניווט ראשי",
+    "devices": "מכשירים"
+  },
+  "header": {
+    "language": "שפה",
+    "hebrew": "עברית",
+    "english": "English",
+    "logout": "יציאה",
+    "signedInAs": "מחובר כ-{{name}}"
+  },
+  "login": {
+    "title": "כניסה",
+    "subtitle": "ניהול שרת RustDesk",
+    "username": "שם משתמש",
+    "password": "סיסמה",
+    "submit": "כניסה",
+    "submitting": "נכנס…"
+  },
+  "changePassword": {
+    "title": "החלפת סיסמה",
+    "forced": "מטעמי אבטחה יש לבחור סיסמה חדשה לפני שממשיכים.",
+    "oldPassword": "סיסמה נוכחית",
+    "newPassword": "סיסמה חדשה",
+    "confirmPassword": "אימות סיסמה חדשה",
+    "hint": "לפחות 8 תווים.",
+    "submit": "החלפת סיסמה",
+    "submitting": "שומר…",
+    "mismatch": "הסיסמאות החדשות אינן תואמות.",
+    "back": "חזרה למכשירים"
+  },
+  "devices": {
+    "title": "מכשירים",
+    "searchBy": "חיפוש לפי",
+    "byId": "לפי ID",
+    "byName": "לפי שם",
+    "searchPlaceholder": "חיפוש מכשירים",
+    "search": "חיפוש",
+    "clear": "ניקוי",
+    "refresh": "רענון",
+    "autoRefresh": "מתעדכן אוטומטית כל 15 שניות",
+    "empty": "לא נמצאו מכשירים.",
+    "total": "סה״כ: {{count}}",
+    "pageOf": "עמוד {{page}} מתוך {{pages}}",
+    "prev": "העמוד הקודם",
+    "next": "העמוד הבא",
+    "online": "מקוון",
+    "offline": "לא מקוון",
+    "disabled": "מושבת",
+    "never": "אף פעם",
+    "columns": {
+      "id": "ID",
+      "deviceName": "שם מכשיר",
+      "osUser": "משתמש מערכת",
+      "os": "מערכת הפעלה",
+      "version": "גרסה",
+      "user": "משתמש משויך",
+      "online": "מקוון",
+      "lastSeen": "נראה לאחרונה",
+      "note": "הערה"
+    }
+  },
+  "errors": {
+    "wrongCredentials": "שם משתמש או סיסמה שגויים.",
+    "tooManyAttempts": "יותר מדי ניסיונות, נסה שוב בעוד דקה",
+    "wrongOldPassword": "הסיסמה הנוכחית שגויה.",
+    "passwordTooShort": "הסיסמה החדשה חייבת להכיל לפחות 8 תווים.",
+    "network": "אין חיבור לשרת. בדקו את החיבור.",
+    "generic": "משהו השתבש. נסו שוב."
+  }
+}

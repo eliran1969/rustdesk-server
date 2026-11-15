@@ -3,12 +3,13 @@ pub(crate) mod auth;
 pub(crate) mod db;
 pub(crate) mod error;
 pub(crate) mod state;
+pub(crate) mod web;
 #[cfg(test)]
 pub(crate) mod test_util;
 
 use crate::{common::get_arg_or, peer::PeerMap};
 use axum::{
-    routing::{get, post},
+    routing::{any, get, post},
     Router,
 };
 use hbb_common::{log, tokio, ResultType};
@@ -33,6 +34,7 @@ pub(crate) fn router(state: ConsoleState) -> Router {
             "/api/console/change-password",
             post(api::account::change_password),
         )
+        .fallback(any(web::serve))
         .layer(axum::Extension(state))
 }
 

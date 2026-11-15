@@ -1,0 +1,76 @@
+{
+  "app": {
+    "brand": "RustDesk Console",
+    "loading": "Loading…"
+  },
+  "nav": {
+    "main": "Main navigation",
+    "devices": "Devices"
+  },
+  "header": {
+    "language": "Language",
+    "hebrew": "עברית",
+    "english": "English",
+    "logout": "Log out",
+    "signedInAs": "Signed in as {{name}}"
+  },
+  "login": {
+    "title": "Sign in",
+    "subtitle": "Manage your RustDesk server",
+    "username": "Username",
+    "password": "Password",
+    "submit": "Sign in",
+    "submitting": "Signing in…"
+  },
+  "changePassword": {
+    "title": "Change password",
+    "forced": "For security, you must choose a new password before continuing.",
+    "oldPassword": "Current password",
+    "newPassword": "New password",
+    "confirmPassword": "Confirm new password",
+    "hint": "At least 8 characters.",
+    "submit": "Change password",
+    "submitting": "Saving…",
+    "mismatch": "The new passwords do not match.",
+    "back": "Back to devices"
+  },
+  "devices": {
+    "title": "Devices",
+    "searchBy": "Search by",
+    "byId": "By ID",
+    "byName": "By name",
+    "searchPlaceholder": "Search devices",
+    "search": "Search",
+    "clear": "Clear",
+    "refresh": "Refresh",
+    "autoRefresh": "Updates automatically every 15 seconds",
+    "empty": "No devices found.",
+    "total": "Total: {{count}}",
+    "pageOf": "Page {{page}} of {{pages}}",
+    "prev": "Previous page",
+    "next": "Next page",
+    "online": "Online",
+    "offline": "Offline",
+    "disabled": "Disabled",
+    "never": "Never",
+    "columns": {
+      "id": "ID",
+      "deviceName": "Device name",
+      "osUser": "System user",
+      "os": "Operating system",
+      "version": "Version",
+      "user": "Assigned user",
+      "online": "Online",
+      "lastSeen": "Last seen",
+      "note": "Note"
+    }
+  },
+  "errors": {
+    "wrongCredentials": "Wrong username or password.",
+    "tooManyAttempts": "Too many attempts, try again in a minute.",
+    "wrongOldPassword": "The current password is incorrect.",
+    "passwordTooShort": "The new password must be at least 8 characters.",
+    "network": "Cannot reach the server. Check your connection.",
+    "generic": "Something went wrong. Please try again."
+  }
+}
