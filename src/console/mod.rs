@@ -27,6 +27,7 @@ pub(crate) fn router(state: ConsoleState) -> Router {
         .route("/api/login", post(api::account::login))
         .route("/api/currentUser", post(api::account::current_user))
         .route("/api/logout", post(api::account::logout))
+        .route("/api/devices", get(api::devices::list))
         .route("/api/console/me", get(api::account::console_me))
         .route(
             "/api/console/change-password",

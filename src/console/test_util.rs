@@ -103,3 +103,20 @@ pub(crate) async fn body_string(res: Response) -> String {
     }
     String::from_utf8(out).unwrap()
 }
+
+/// Logs in through `/api/login` and returns the access token.
+pub(crate) async fn login_token(app: &Router, name: &str, pw: &str) -> String {
+    use axum::{body::Body, http::Request};
+    use tower::ServiceExt;
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/login")
+        .body(Body::from(
+            serde_json::json!({"username": name, "password": pw}).to_string(),
+        ))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), axum::http::StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_str(&body_string(res).await).unwrap();
+    body["access_token"].as_str().unwrap().to_owned()
+}

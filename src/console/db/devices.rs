@@ -7,7 +7,6 @@ pub(crate) const SYSINFO_VER: &str = "1";
 
 /// Same window as `REG_TIMEOUT` (30_000 ms) in rendezvous_server.rs: a peer that has
 /// registered within it counts as online.
-#[allow(dead_code)] // used by is_online; consumed by the device list (Task 6)
 const ONLINE_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Returns the peer's guid only when a `peer` row has this id AND its `uuid` equals the
@@ -81,7 +80,6 @@ pub(crate) async fn assign_if_unassigned(
     Ok(())
 }
 
-#[allow(dead_code)] // consumed by the device list (Task 6)
 pub(crate) async fn is_online(pm: &PeerMap, id: &str) -> bool {
     match pm.get_in_memory(id).await {
         Some(p) => p.read().await.last_reg_time.elapsed() < ONLINE_TIMEOUT,

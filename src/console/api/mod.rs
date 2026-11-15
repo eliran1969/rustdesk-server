@@ -1,5 +1,6 @@
 pub(crate) mod account;
 pub(crate) mod client;
+pub(crate) mod devices;
 
 use super::error::ApiError;
 use axum::{

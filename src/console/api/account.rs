@@ -193,7 +193,9 @@ pub(crate) async fn change_password(
 
 #[cfg(test)]
 mod tests {
-    use crate::console::test_util::{body_string, insert_peer, insert_user, test_app_with_db};
+    use crate::console::test_util::{
+        body_string, insert_peer, insert_user, login_token, test_app_with_db,
+    };
     use axum::{
         body::Body,
         extract::ConnectInfo,
@@ -231,12 +233,6 @@ mod tests {
 
     async fn login(app: &Router, body: Value) -> (StatusCode, Value) {
         send(app, req("POST", "/api/login", Some(body), None)).await
-    }
-
-    async fn login_token(app: &Router, name: &str, pw: &str) -> String {
-        let (status, body) = login(app, json!({"username": name, "password": pw})).await;
-        assert_eq!(status, StatusCode::OK, "{body}");
-        body["access_token"].as_str().unwrap().to_owned()
     }
 
     async fn peer_user(db: &SqlitePool, id: &str) -> Option<Vec<u8>> {
