@@ -89,6 +89,16 @@ pub(crate) fn router(state: ConsoleState) -> Router {
         )
         .route("/api/users/:guid/enable", post(api::users::enable))
         .route("/api/users/:guid/disable", post(api::users::disable))
+        .route(
+            "/api/user-groups",
+            get(api::user_groups::list).post(api::user_groups::create),
+        )
+        .route(
+            "/api/user-groups/:guid",
+            post(api::user_groups::add_users)
+                .patch(api::user_groups::update)
+                .delete(api::user_groups::delete),
+        )
         .fallback(any(web::serve))
         .layer(axum::Extension(state));
     with_limits(app, REQUEST_TIMEOUT, MAX_CONCURRENT_REQUESTS)

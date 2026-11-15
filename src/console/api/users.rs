@@ -39,7 +39,7 @@ fn hex(b: &[u8]) -> String {
 }
 
 /// A guid is 32 hex digits (16 bytes); anything else is "not found".
-fn parse_guid(s: &str) -> Result<Vec<u8>, ApiError> {
+pub(super) fn parse_guid(s: &str) -> Result<Vec<u8>, ApiError> {
     if s.len() != 32 || !s.is_ascii() {
         return Err(ApiError::NotFound);
     }
