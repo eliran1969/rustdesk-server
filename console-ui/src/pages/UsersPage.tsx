@@ -154,21 +154,28 @@ function UserFormModal({ user, groups, isSelf, onClose, onSaved }: UserFormProps
             <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} dir="auto" />
           </label>
         )}
-        <label className="field">
-          <span>{t('users.fields.password')}</span>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="new-password"
-            required={!editing}
-            minLength={MIN_PASSWORD}
-            aria-describedby={`${formId}-pw-hint`}
-          />
-        </label>
-        <small id={`${formId}-pw-hint`} className="muted field-hint">
-          {editing ? t('users.passwordKeepHint') : t('users.passwordHint')}
-        </small>
+        {editing && isSelf ? (
+          // The server refuses a password in PATCH for the caller's own account.
+          <small className="muted field-hint">{t('users.selfPasswordHint')}</small>
+        ) : (
+          <>
+            <label className="field">
+              <span>{t('users.fields.password')}</span>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="new-password"
+                required={!editing}
+                minLength={MIN_PASSWORD}
+                aria-describedby={`${formId}-pw-hint`}
+              />
+            </label>
+            <small id={`${formId}-pw-hint`} className="muted field-hint">
+              {editing ? t('users.passwordKeepHint') : t('users.passwordHint')}
+            </small>
+          </>
+        )}
         <label className="field">
           <span>{t('users.fields.group')}</span>
           <select value={group} onChange={(e) => setGroup(e.target.value)}>

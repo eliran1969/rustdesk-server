@@ -150,6 +150,7 @@ const EXACT_ERRORS: Record<string, string> = {
   'Cannot rename the default group': 'errors.defaultGroupRename',
   'Admin required!': 'errors.adminRequired',
   'Disable the device first': 'errors.disableDeviceFirst',
+  'Use change password for your own account': 'errors.selfPasswordChange',
 }
 
 /** Server error strings that end with a name → i18n key with `{{name}}`. */
@@ -158,6 +159,7 @@ const PREFIX_ERRORS: [string, string][] = [
   ['Unknown group: ', 'errors.unknownGroup'],
   ['Invalid rule type: ', 'errors.invalidRuleType'],
   ['Unknown user: ', 'errors.unknownUser'],
+  ['User is disabled: ', 'errors.userDisabled'],
   ['Unknown device group: ', 'errors.unknownDeviceGroup'],
   ['Unknown device: ', 'errors.unknownDevice'],
 ]

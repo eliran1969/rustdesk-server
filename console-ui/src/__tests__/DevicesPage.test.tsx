@@ -171,6 +171,9 @@ describe('DevicesPage (admin)', () => {
     })
     expect(enabledDelete).toBeDisabled()
     expect(enabledDelete).toHaveAttribute('title', en.devices.deleteEnabledHint)
+    expect(
+      within(rowOfId('111111111')).getByRole('button', { name: en.devices.disable }),
+    ).toHaveAttribute('title', en.devices.disableHint)
 
     const disabledDelete = within(rowOfId('222222222')).getByRole('button', {
       name: en.common.delete,
@@ -178,6 +181,7 @@ describe('DevicesPage (admin)', () => {
     expect(disabledDelete).toBeEnabled()
     fireEvent.click(disabledDelete)
     const dialog = await screen.findByRole('dialog', { name: en.devices.confirmDeleteTitle })
+    expect(within(dialog).getByText(en.devices.deleteOnlineHint)).toBeInTheDocument()
     fireEvent.click(within(dialog).getByRole('button', { name: en.common.delete }))
     await waitFor(() =>
       expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'DELETE')).toHaveLength(1),

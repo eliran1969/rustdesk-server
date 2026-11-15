@@ -6,6 +6,8 @@ interface ConfirmDialogProps {
   open: boolean
   title: string
   message: string
+  /** Optional secondary note under the message. */
+  hint?: string
   confirmLabel: string
   danger?: boolean
   onConfirm: () => unknown
@@ -17,6 +19,7 @@ export function ConfirmDialog({
   open,
   title,
   message,
+  hint,
   confirmLabel,
   danger = false,
   onConfirm,
@@ -56,6 +59,7 @@ export function ConfirmDialog({
       }
     >
       <p className="confirm-message">{message}</p>
+      {hint && <p className="muted small confirm-hint">{hint}</p>}
     </Modal>
   )
 }

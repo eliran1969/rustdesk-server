@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { ApiError, describeError } from '../api'
 import i18n, { setLanguage } from '../i18n'
 import en from '../i18n/en.json'
 import he from '../i18n/he.json'
@@ -13,6 +14,16 @@ function keyPaths(obj: unknown, prefix = ''): string[] {
 }
 
 describe('i18n', () => {
+  it('maps the phase 2 review error strings to translated keys', () => {
+    expect(describeError(new ApiError('Use change password for your own account', 400))).toEqual({
+      key: 'errors.selfPasswordChange',
+    })
+    expect(describeError(new ApiError('User is disabled: bob', 400))).toEqual({
+      key: 'errors.userDisabled',
+      params: { name: 'bob' },
+    })
+  })
+
   it('he and en have identical key sets', () => {
     expect(keyPaths(he)).toEqual(keyPaths(en))
     expect(keyPaths(en).length).toBeGreaterThan(10)

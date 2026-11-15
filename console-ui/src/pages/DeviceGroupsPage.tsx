@@ -144,8 +144,12 @@ function MembersModal({ group, onClose, onChanged }: MembersModalProps) {
       .then((res) => {
         if (!alive) return
         const list = res as ListResponse<Device>
-        setDevices(list.data ?? [])
-        setTotal(list.total ?? 0)
+        // The server binds `device_group_name` as a LIKE pattern, so `_` or `%` in a group
+        // name can match other groups: keep exact matches only.
+        const data = list.data ?? []
+        const exact = data.filter((d) => d.device_group_name === group.name)
+        setDevices(exact)
+        setTotal(Math.max(exact.length, (list.total ?? 0) - (data.length - exact.length)))
       })
       .catch((err) => {
         if (alive) setError(describeError(err))

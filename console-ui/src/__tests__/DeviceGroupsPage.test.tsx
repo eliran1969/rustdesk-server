@@ -2,8 +2,8 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { setLanguage } from '../i18n'
 import en from '../i18n/en.json'
-import { renderApp } from './helpers'
-import { setupDevices } from './deviceFixtures'
+import { ADMIN, mockFetch, renderApp } from './helpers'
+import { DEVICES, setupDevices } from './deviceFixtures'
 import { callsTo } from './orgFixtures'
 
 function fill(template: string, values: Record<string, string | number>): string {
@@ -61,6 +61,44 @@ describe('DeviceGroupsPage', () => {
     )
     const [, del] = callsTo(fetchMock, '/api/device-groups/d1/devices', 'DELETE')[0]
     expect(JSON.parse(String(del?.body))).toEqual(['111111111'])
+  })
+
+  it('manage devices keeps only exact group-name matches (LIKE wildcards)', async () => {
+    const group = {
+      guid: 'd9',
+      name: 'Lab_1',
+      note: '',
+      created_at: null,
+      allowed_incomings: [],
+      device_count: 1,
+    }
+    const exact = { ...DEVICES[0], guid: 'e1', id: '700000001', device_group_name: 'Lab_1' }
+    // `_` is a LIKE wildcard, so the server also returns a device of `LabX1`.
+    const other = { ...DEVICES[2], guid: 'e2', id: '700000002', device_group_name: 'LabX1' }
+    mockFetch((url) => {
+      const u = new URL(url, 'http://localhost')
+      if (u.pathname === '/api/console/me') {
+        return { status: 200, body: { ...ADMIN, must_change_password: false } }
+      }
+      if (u.pathname === '/api/device-groups') {
+        return { status: 200, body: { total: 1, data: [group] } }
+      }
+      if (u.pathname === '/api/devices') {
+        return { status: 200, body: { total: 2, data: [exact, other] } }
+      }
+      return { status: 200, body: { total: 0, data: [] } }
+    })
+    renderApp('/device-groups')
+    const row = (await screen.findByText('Lab_1')).closest('tr') as HTMLElement
+    fireEvent.click(within(row).getByRole('button', { name: en.deviceGroups.manageDevices }))
+    const dialog = within(
+      await screen.findByRole('dialog', {
+        name: fill(en.deviceGroups.manageTitle, { name: 'Lab_1' }),
+      }),
+    )
+    expect(await dialog.findByText('700000001')).toBeInTheDocument()
+    expect(dialog.queryByText('700000002')).not.toBeInTheDocument()
+    expect(dialog.queryByText(/700000002/)).toBeNull()
   })
 
   it('unknown device id shows a translated error in the dialog', async () => {

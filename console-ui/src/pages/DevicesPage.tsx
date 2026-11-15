@@ -408,6 +408,7 @@ export function DevicesPage() {
             className="btn btn-danger-ghost btn-sm"
             onClick={() => batchStatus('disable')}
             disabled={running}
+            title={t('devices.disableHint')}
           >
             {t('devices.batch.disable')}
           </button>
@@ -559,6 +560,7 @@ export function DevicesPage() {
                             type="button"
                             className="btn btn-ghost btn-sm"
                             onClick={() => void setStatus(d, enabled ? 'disable' : 'enable')}
+                            title={enabled ? t('devices.disableHint') : undefined}
                           >
                             {enabled ? t('devices.disable') : t('devices.enable')}
                           </button>
@@ -636,6 +638,7 @@ export function DevicesPage() {
         open={deleting !== null}
         title={t('devices.confirmDeleteTitle')}
         message={t('devices.confirmDeleteMessage', { id: deleting?.id ?? '' })}
+        hint={t('devices.deleteOnlineHint')}
         confirmLabel={t('common.delete')}
         danger
         onConfirm={confirmDelete}

@@ -87,6 +87,19 @@ describe('UsersPage', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   })
 
+  it('editing your own account offers no password field', async () => {
+    const fetchMock = setupOrg({ ...ADMIN, name: 'alice' })
+    renderApp('/users')
+    await screen.findByText('bob')
+    const own = await saveEdit(fetchMock, 'alice')
+    expect(own.queryByLabelText(en.users.fields.password)).not.toBeInTheDocument()
+    expect(own.getByText(en.users.selfPasswordHint)).toBeInTheDocument()
+    fireEvent.click(own.getByRole('button', { name: en.common.cancel }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    const other = await saveEdit(fetchMock, 'bob')
+    expect(other.getByLabelText(en.users.fields.password)).toBeInTheDocument()
+  })
+
   it('delete button disabled for active user', async () => {
     setupOrg()
     renderApp('/users')

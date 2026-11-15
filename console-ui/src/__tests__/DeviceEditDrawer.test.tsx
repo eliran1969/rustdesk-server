@@ -59,6 +59,26 @@ describe('DeviceEditDrawer', () => {
     expect(JSON.parse(String(calls[0][1]?.body))).toEqual({ device_name: '', note: 'lobby' })
   })
 
+  it('explains what disable and delete do not do yet', () => {
+    setupDevices()
+    const d = open()
+    expect(d.getByText(en.devices.disableHint)).toBeInTheDocument()
+    expect(d.getByText(en.devices.deleteOnlineHint)).toBeInTheDocument()
+  })
+
+  it('shows a translated error when the assigned user is disabled', async () => {
+    setupDevices(undefined, () => ({
+      status: 400,
+      body: { error: 'User is disabled: bob' },
+    }))
+    const d = open()
+    fireEvent.change(d.getByLabelText(en.devices.edit.user), { target: { value: 'bob' } })
+    fireEvent.click(d.getByRole('button', { name: en.common.save }))
+    expect(await d.findByRole('alert')).toHaveTextContent(
+      en.errors.userDisabled.replace('{{name}}', 'bob'),
+    )
+  })
+
   it('shows a translated error when the server rejects the group', async () => {
     setupDevices(undefined, () => ({
       status: 400,

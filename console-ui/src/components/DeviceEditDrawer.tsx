@@ -179,6 +179,10 @@ export function DeviceEditDrawer({
             ))}
           </select>
         </label>
+        <div className="device-status-hints muted small" role="note">
+          <p>{t('devices.disableHint')}</p>
+          <p>{t('devices.deleteOnlineHint')}</p>
+        </div>
       </form>
     </Modal>
   )
