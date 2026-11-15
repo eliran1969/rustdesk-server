@@ -35,21 +35,67 @@ db_v2.sqlite3
 
 אם יש לכם התקנה s6 עם container אחד שמריץ גם hbbs וגם hbbr, בגרסה החדשה יהיו שני containers (אחד עם הפקודה `hbbs` ואחד עם `hbbr`), כמו בקובץ ה-compose שמצורף.
 
+### רושמים את שמות ה-containers וההגדרות הנוכחיות
+
+לפני שנוגעים בכל דבר, חובה לרשום שני דברים.
+
+**א. שמות ה-containers.** דרך SSH מריצים:
+
+```bash
+sudo docker ps
+```
+
+ורושמים את העמודה NAMES. בהתקנה classic יש שני containers (אחד מריץ `hbbs` ואחד `hbbr`, השמות שלהם לא בהכרח `hbbs` ו-`hbbr`). בהתקנה s6 יש container אחד בלבד שמריץ את שניהם. בהמשך המדריך מגדירים שני משתנים, ובכל הפקודות משתמשים בהם:
+
+```bash
+# classic: שני שמות שונים. מחליפים בשמות האמיתיים שלכם.
+OLD_HBBS=<שם-ה-container-של-hbbs>
+OLD_HBBR=<שם-ה-container-של-hbbr>
+
+# s6: container אחד, אותו שם בשני המשתנים
+# OLD_HBBS=<שם-הקונטיינר>
+# OLD_HBBR=<שם-הקונטיינר>
+```
+
+המשתנים נשמרים רק בחלון ה-SSH הנוכחי. אם סוגרים אותו, מגדירים אותם שוב.
+
+**ב. הפקודה והמשתני הסביבה של ה-container הישן.** ה-container החדש לא יורש אותם אוטומטית, ואם נשמיט דגל חשוב ההתנהגות של השרת (למשל כתובת ה-relay) עלולה להשתנות. רושמים אותם (בקובץ או במחברת):
+
+```bash
+sudo docker inspect --format '{{.Config.Cmd}} {{.Config.Entrypoint}}' "$OLD_HBBS"
+sudo docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$OLD_HBBS"
+sudo docker inspect --format '{{.Config.Cmd}} {{.Config.Entrypoint}}' "$OLD_HBBR"
+sudo docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$OLD_HBBR"
+```
+
+אותו מידע מופיע ב-Container Manager → ה-container → **Details** (פקודה, Environment). דברים שחשוב לשים לב אליהם: דגלים כמו `-r your.host:21117` (כתובת ה-relay) או `-k _`, ומשתנים כמו `RELAY_SERVERS`, `ENCRYPTED_ONLY`, `ALWAYS_USE_RELAY`. בסעיף 4 מעבירים אותם ל-container החדש.
+
 ## 2. גיבוי מלא של התיקייה
 
-לפני כל דבר אחר. דרך SSH (מחליפים את הנתיב לנתיב שלכם):
+לפני כל דבר אחר. דרך SSH (מחליפים את נתיב התיקייה לנתיב שלכם). חשוב לעצור את ה-containers לפני ההעתקה, כי אחרת בסיס הנתונים נכתב בזמן ההעתקה והגיבוי עלול להיות פגום. הפקודות משורשרות עם `&&` כך שההעתקה לא תרוץ אם העצירה נכשלה:
 
 ```bash
 cd /volume1/docker
-sudo docker stop hbbs hbbr
-sudo cp -a rustdesk rustdesk-backup-$(date +%Y%m%d)
-ls -la rustdesk-backup-*
-sudo docker start hbbs hbbr
+sudo docker stop "$OLD_HBBS" "$OLD_HBBR" && \
+  sudo cp -a rustdesk rustdesk-backup-$(date +%Y%m%d)
 ```
 
-או ב-File Station: מסמנים את התיקייה, לחיצה ימנית, **Copy**, ומדביקים לצידה בשם חדש.
+מוודאים ששני ה-containers באמת נעצרו (הרשימה צריכה להיות ריקה משמות ה-containers שלכם) ושהגיבוי קיים:
 
-חשוב במיוחד לשמור את `id_ed25519` ו-`id_ed25519.pub` (המפתחות: בלעדיהם כל המכשירים יצטרכו הגדרה מחדש) ואת `db_v2.sqlite3` (רשימת המכשירים). קבצים נוספים כמו `db_v2.sqlite3-wal` ו-`db_v2.sqlite3-shm` הם חלק מהגיבוי. עוצרים את ה-containers לפני ההעתקה כדי לקבל גיבוי עקבי.
+```bash
+sudo docker ps
+ls -la rustdesk-backup-*
+```
+
+ואז מפעילים אותם מחדש:
+
+```bash
+sudo docker start "$OLD_HBBS" "$OLD_HBBR"
+```
+
+או ב-File Station: מסמנים את התיקייה, לחיצה ימנית, **Copy**, ומדביקים לצידה בשם חדש (גם כאן קודם עוצרים את ה-containers ב-Container Manager).
+
+חשוב במיוחד לשמור את `id_ed25519` ו-`id_ed25519.pub` (המפתחות: בלעדיהם כל המכשירים יצטרכו הגדרה מחדש) ואת `db_v2.sqlite3` (רשימת המכשירים). קבצים נוספים כמו `db_v2.sqlite3-wal` ו-`db_v2.sqlite3-shm` הם חלק מהגיבוי.
 
 השרת החדש גם יוצר בעצמו גיבוי של בסיס הנתונים לפני שדרוג שלו, בשם `db_v2.sqlite3.bak-<מספר>`. זה נוסף על הגיבוי הידני ולא במקומו.
 
@@ -57,11 +103,11 @@ sudo docker start hbbs hbbr
 
 מטרה: לוודא שהגרסה החדשה עולה, רואה את המכשירים הקיימים והגיבוי האוטומטי נוצר, בלי לגעת בנתונים האמיתיים ובלי להפריע לשרת שרץ.
 
-1. יוצרים עותק של התיקייה:
+1. יוצרים עותק של **הגיבוי מסעיף 2** (לא של התיקייה החיה, כדי שהעותק יהיה עקבי):
 
 ```bash
 cd /volume1/docker
-sudo cp -a rustdesk rustdesk-trial
+sudo cp -a rustdesk-backup-YYYYMMDD rustdesk-trial
 ```
 
 2. מריצים container ניסיוני **על העותק**, בפורטים חלופיים (השרת האמיתי ממשיך לרוץ על הפורטים הרגילים). הפורט הפנימי של הממשק נקבע ב-`API_PORT=31114`, והפורטים של השרת ממופים מ-31115 עד 31119:
@@ -98,45 +144,61 @@ sudo rm -rf /volume1/docker/rustdesk-trial
 
 ## 4. ההחלפה האמיתית
 
-1. עוצרים את ה-containers הישנים (`hbbs`, `hbbr`) ולא מוחקים אותם. משנים להם שם כדי שלא יתנגשו בשם ה-containers החדשים, וכך אפשר לחזור אחורה בקלות:
+1. עוצרים את ה-containers הישנים ולא מוחקים אותם. מיד אחרי העצירה לוקחים עותק טרי של התיקייה (כדי שמכשירים שנרשמו מאז הגיבוי בסעיף 2 לא יאבדו אם תצטרכו לחזור אחורה), ומשנים לישנים שם כדי שלא יתנגשו בשמות החדשים:
 
 ```bash
-sudo docker stop hbbs hbbr
-sudo docker rename hbbs hbbs-old
-sudo docker rename hbbr hbbr-old
+sudo docker stop "$OLD_HBBS" "$OLD_HBBR" && \
+  sudo docker ps && \
+  cd /volume1/docker && \
+  sudo cp -a rustdesk rustdesk-pre-switch-$(date +%Y%m%d)
 ```
 
-2. מפעילים את החדשים על **התיקייה המקורית**. הדרך הפשוטה היא עם הקובץ `docker/docker-compose.console.yml`: מעתיקים אותו ל-NAS ומשנים בו את שורת ה-volume (בשני השירותים) לתיקייה האמיתית, למשל `/volume1/docker/rustdesk:/root`. אחר כך:
+   בודקים ש-`docker ps` לא מציג עוד את ה-containers הישנים. אם הם עדיין רצים, **לא ממשיכים**: הפורטים יתנגשו עם החדשים. אחר כך:
+
+```bash
+sudo docker rename "$OLD_HBBS" "${OLD_HBBS}-old"
+# רק בהתקנה classic (אם יש שני containers שונים):
+sudo docker rename "$OLD_HBBR" "${OLD_HBBR}-old"
+```
+
+2. מעבירים את ההגדרות הישנות. מעתיקים את הקובץ `docker/docker-compose.console.yml` ל-NAS ופותחים אותו לעריכה:
+   - שורת ה-volume (בשני השירותים): מחליפים ל-`/volume1/docker/rustdesk:/root` (או לתיקייה האמיתית שלכם).
+   - **משתני הסביבה והדגלים שרשמתם בסעיף 1ב**: מוסיפים אותם ב-`environment` ובשורת `command` (בקובץ יש דוגמאות בהערות, למשל `command: hbbs -r your.host:21117`). משתמשים בערכים **שלכם**, לא בדוגמה.
+
+3. מפעילים:
 
 ```bash
 sudo docker compose -f docker-compose.console.yml up -d
 sudo docker logs hbbs 2>&1 | head -50
 ```
 
-   אפשר גם דרך הממשק: Container Manager → Container → Create על ה-image `rustdesk-server-console:latest`, הפקודה `hbbs` (ובנפרד `hbbr` ל-container השני), רשת **host**, Volume של התיקייה האמיתית ל-`/root`, ומשתנה סביבה `API_PORT=21114`.
+   אפשר גם דרך הממשק: Container Manager → Container → Create על ה-image `rustdesk-server-console:latest`, הפקודה (`hbbs` עם הדגלים הישנים שלכם, ובנפרד `hbbr` ל-container השני), רשת **host**, Volume של התיקייה האמיתית ל-`/root`, ומשתנה סביבה `API_PORT=21114` יחד עם שאר המשתנים הישנים.
 
-3. בודקים: הממשק עולה על `http://<כתובת-ה-NAS>:21114`, ומכשירים מתחברים כרגיל.
+4. בודקים: הממשק עולה על `http://<כתובת-ה-NAS>:21114`, ומכשירים מתחברים כרגיל.
 
-כשהכל עובד כמה ימים, אפשר למחוק את `hbbs-old` ו-`hbbr-old`. לא כדאי למחוק מהר את תיקיית הגיבוי.
+כשהכל עובד כמה ימים, אפשר למחוק את ה-containers הישנים (בשמות `...-old`). לא כדאי למחוק מהר את תיקיות הגיבוי.
 
 ## 5. שחזור (אם משהו השתבש)
 
+אם אפשר, חוזרים עם העותק הטרי מסעיף 4 (`rustdesk-pre-switch-...`), כי הוא כולל מכשירים שנרשמו אחרי הגיבוי הראשון. אם הוא לא קיים, משתמשים בגיבוי מסעיף 2. הפקודות מניחות את המשתנים `OLD_HBBS` ו-`OLD_HBBR` (מגדירים מחדש אם צריך), ושהחדשים נקראים `hbbs` ו-`hbbr` כמו בקובץ ה-compose:
+
 ```bash
-sudo docker stop hbbs hbbr
-sudo docker rm hbbs hbbr
-# מחזירים את הנתונים מהגיבוי:
+sudo docker stop hbbs hbbr && sudo docker rm hbbs hbbr
+sudo docker ps    # מוודאים שהחדשים נעלמו
+# מחזירים את הנתונים:
 cd /volume1/docker
 sudo mv rustdesk rustdesk-failed
-sudo cp -a rustdesk-backup-YYYYMMDD rustdesk
-# מחזירים את ה-containers הישנים:
-sudo docker rename hbbs-old hbbs
-sudo docker rename hbbr-old hbbr
-sudo docker start hbbs hbbr
+sudo cp -a rustdesk-pre-switch-YYYYMMDD rustdesk
+# מחזירים את ה-containers הישנים לשמות המקוריים ומפעילים:
+sudo docker rename "${OLD_HBBS}-old" "$OLD_HBBS"
+# רק בהתקנה classic:
+sudo docker rename "${OLD_HBBR}-old" "$OLD_HBBR"
+sudo docker start "$OLD_HBBS" "$OLD_HBBR"
 ```
 
-אם כבר מחקתם את ה-containers הישנים, יוצרים אותם מחדש מה-image הישן (`rustdesk/rustdesk-server` או `rustdesk/rustdesk-server-s6`) על התיקייה המשוחזרת, עם אותן הגדרות כמו קודם.
+אם כבר מחקתם את ה-containers הישנים, יוצרים אותם מחדש מה-image הישן (`rustdesk/rustdesk-server` או `rustdesk/rustdesk-server-s6`) על התיקייה המשוחזרת, עם הפקודה והמשתנים שרשמתם בסעיף 1ב.
 
-חשוב: אחרי הפעלת הגרסה החדשה בסיס הנתונים עבר שדרוג. השחזור הבטוח ביותר הוא מהגיבוי שעשיתם בסעיף 2 (או מהקובץ `db_v2.sqlite3.bak-...` שנוצר אוטומטית).
+חשוב: אחרי הפעלת הגרסה החדשה בסיס הנתונים עבר שדרוג. הגרסה הישנה יכולה בדרך כלל לקרוא אותו, אבל השחזור הבטוח ביותר הוא מעותק שנלקח לפני ההפעלה (או מהקובץ `db_v2.sqlite3.bak-...` שנוצר אוטומטית).
 
 ## 6. Reverse proxy ב-DSM (גישה ב-HTTPS על פורט 443)
 

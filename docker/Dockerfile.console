@@ -7,7 +7,7 @@
 ARG TARGETARCH
 
 # ---- 1. web console UI ----
-FROM --platform=$BUILDPLATFORM node:20-alpine AS ui
+FROM --platform=$BUILDPLATFORM node:22-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a AS ui
 WORKDIR /ui
 COPY console-ui/package.json console-ui/package-lock.json ./
 RUN npm ci
@@ -16,13 +16,13 @@ RUN npm run build
 
 # ---- 2. Rust build, one stage per target architecture ----
 # The per-target *_OPENSSL_DIR variables point openssl-sys at the static OpenSSL built below.
-FROM --platform=$BUILDPLATFORM messense/rust-musl-cross:x86_64-musl AS build-amd64
+FROM --platform=$BUILDPLATFORM messense/rust-musl-cross:x86_64-musl@sha256:3f1010eb48311dfde5d51f011163451940af34bd317355c4a8652ce6b4b61051 AS build-amd64
 ENV RUST_TARGET=x86_64-unknown-linux-musl \
     OPENSSL_PLATFORM=linux-x86_64 \
     X86_64_UNKNOWN_LINUX_MUSL_OPENSSL_DIR=/opt/openssl \
     X86_64_UNKNOWN_LINUX_MUSL_OPENSSL_STATIC=1
 
-FROM --platform=$BUILDPLATFORM messense/rust-musl-cross:aarch64-musl AS build-arm64
+FROM --platform=$BUILDPLATFORM messense/rust-musl-cross:aarch64-musl@sha256:02e790506c5f15a533bc05b3af8719b16a8a2314480f6f0fdc0166432035d9b4 AS build-arm64
 ENV RUST_TARGET=aarch64-unknown-linux-musl \
     OPENSSL_PLATFORM=linux-aarch64 \
     AARCH64_UNKNOWN_LINUX_MUSL_OPENSSL_DIR=/opt/openssl \
@@ -31,13 +31,16 @@ ENV RUST_TARGET=aarch64-unknown-linux-musl \
 FROM build-${TARGETARCH} AS build
 # openssl-sys (pulled in by hbb_common) needs a static OpenSSL for the musl target
 ARG OPENSSL_VERSION=3.0.15
+ARG OPENSSL_SHA256=23c666d0edf20f14249b3d8f0368acaee9ab585b09e1de82107c66e1f3ec9533
 RUN set -eux; \
     mkdir /tmp/ossl && cd /tmp/ossl; \
-    curl -fsSL https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz | tar xz --strip-components=1; \
+    curl -fsSL -o /tmp/openssl.tar.gz https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL_VERSION}/openssl-${OPENSSL_VERSION}.tar.gz; \
+    echo "${OPENSSL_SHA256}  /tmp/openssl.tar.gz" | sha256sum -c -; \
+    tar xzf /tmp/openssl.tar.gz --strip-components=1; \
     CC=${RUST_TARGET%%-unknown*}-unknown-linux-musl-gcc ./Configure ${OPENSSL_PLATFORM} no-shared no-tests \
         --prefix=/opt/openssl --openssldir=/opt/openssl --libdir=lib; \
     make -j"$(nproc)" build_libs; make install_dev; \
-    rm -rf /tmp/ossl
+    rm -rf /tmp/ossl /tmp/openssl.tar.gz
 # build scripts run on the (glibc) build host and need the system OpenSSL + pkg-config
 RUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev \
  && rm -rf /var/lib/apt/lists/*

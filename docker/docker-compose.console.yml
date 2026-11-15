@@ -7,8 +7,15 @@ services:
     container_name: hbbs
     image: rustdesk-server-console:latest
     command: hbbs
+    # Carry over the command flags of your OLD hbbs container (see the guide, section 1), e.g.:
+    # command: hbbs -r your.host:21117
+    # command: hbbs -r your.host:21117 -k _
     environment:
       - API_PORT=21114
+      # Carry over the OLD container's environment too (your own values), e.g.:
+      # - RELAY_SERVERS=your.host
+      # - ENCRYPTED_ONLY=1
+      # - ALWAYS_USE_RELAY=Y
       # - TRUST_PROXY=Y   # only if the console is reached exclusively via a reverse proxy
     volumes:
       - ./data:/root
@@ -21,6 +28,7 @@ services:
     container_name: hbbr
     image: rustdesk-server-console:latest
     command: hbbr
+    # Carry over the old hbbr container's command/environment here if it had any.
     volumes:
       - ./data:/root
     network_mode: host

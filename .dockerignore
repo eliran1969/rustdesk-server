@@ -9,3 +9,5 @@ debian
 **/*.bak-*
 test.sqlite3
 data
+id_ed25519*
+db_v2.sqlite3-*
